@@ -1969,6 +1969,37 @@ describe("remap", () => {
     const meta = readMetadataRaw(sessionsDir, "app-1");
     expect(meta?.["opencodeSessionId"]).toBe("ses_discovered");
   });
+
+  it("falls back to title discovery when persisted mapping is invalid", async () => {
+    const deleteLogPath = join(tmpDir, "opencode-delete-remap-invalid.log");
+    const mockBin = installMockOpencode(
+      JSON.stringify([
+        {
+          id: "ses_discovered_valid",
+          title: "AO:app-1",
+        },
+      ]),
+      deleteLogPath,
+    );
+    process.env.PATH = `${mockBin}:${originalPath ?? ""}`;
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: "/tmp",
+      branch: "main",
+      status: "working",
+      project: "my-app",
+      agent: "opencode",
+      runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+      opencodeSessionId: "ses bad id",
+    });
+
+    const sm = createSessionManager({ config, registry: mockRegistry });
+    const mapped = await sm.remap("app-1");
+
+    expect(mapped).toBe("ses_discovered_valid");
+    const meta = readMetadataRaw(sessionsDir, "app-1");
+    expect(meta?.["opencodeSessionId"]).toBe("ses_discovered_valid");
+  });
 });
 
 describe("spawnOrchestrator", () => {

@@ -1421,7 +1421,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       throw new Error(`Session ${sessionId} is not using the opencode agent`);
     }
 
-    const mapped = raw["opencodeSessionId"];
+    const mapped = asValidOpenCodeSessionId(raw["opencodeSessionId"]);
     const discovered = force
       ? await discoverOpenCodeSessionIdByTitle(sessionId, OPENCODE_INTERACTIVE_DISCOVERY_TIMEOUT_MS)
       : (mapped ??
