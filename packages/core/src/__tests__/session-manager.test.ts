@@ -3074,6 +3074,83 @@ describe("restore", () => {
     expect(meta!["summary"]).toBe("Implementing feature X");
     expect(meta!["branch"]).toBe("feat/TEST-42");
   });
+
+  it("does not overwrite restored status/runtime metadata when postLaunchSetup is a no-op", async () => {
+    const wsPath = join(tmpDir, "ws-app-post-launch-noop");
+    mkdirSync(wsPath, { recursive: true });
+
+    const agentWithNoopPostLaunch: Agent = {
+      ...mockAgent,
+      postLaunchSetup: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const registryWithNoopPostLaunch: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return agentWithNoopPostLaunch;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: wsPath,
+      branch: "feat/TEST-77",
+      status: "killed",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-old")),
+    });
+
+    const sm = createSessionManager({ config, registry: registryWithNoopPostLaunch });
+    await sm.restore("app-1");
+
+    const meta = readMetadataRaw(sessionsDir, "app-1");
+    expect(meta!["status"]).toBe("spawning");
+    expect(meta!["runtimeHandle"]).toBe(JSON.stringify(makeHandle("rt-1")));
+    expect(meta!["restoredAt"]).toBeDefined();
+  });
+
+  it("persists only metadata updates produced by postLaunchSetup", async () => {
+    const wsPath = join(tmpDir, "ws-app-post-launch-metadata");
+    mkdirSync(wsPath, { recursive: true });
+
+    const agentWithMetadataUpdate: Agent = {
+      ...mockAgent,
+      postLaunchSetup: vi.fn().mockImplementation(async (session) => {
+        session.metadata = {
+          ...session.metadata,
+          opencodeSessionId: "ses_from_post_launch",
+        };
+      }),
+    };
+
+    const registryWithMetadataUpdate: PluginRegistry = {
+      ...mockRegistry,
+      get: vi.fn().mockImplementation((slot: string) => {
+        if (slot === "runtime") return mockRuntime;
+        if (slot === "agent") return agentWithMetadataUpdate;
+        if (slot === "workspace") return mockWorkspace;
+        return null;
+      }),
+    };
+
+    writeMetadata(sessionsDir, "app-1", {
+      worktree: wsPath,
+      branch: "feat/TEST-78",
+      status: "killed",
+      project: "my-app",
+      runtimeHandle: JSON.stringify(makeHandle("rt-old")),
+    });
+
+    const sm = createSessionManager({ config, registry: registryWithMetadataUpdate });
+    await sm.restore("app-1");
+
+    const meta = readMetadataRaw(sessionsDir, "app-1");
+    expect(meta!["status"]).toBe("spawning");
+    expect(meta!["runtimeHandle"]).toBe(JSON.stringify(makeHandle("rt-1")));
+    expect(meta!["opencodeSessionId"]).toBe("ses_from_post_launch");
+  });
 });
 
 describe("PluginRegistry.loadBuiltins importFn", () => {

@@ -1655,10 +1655,18 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
 
     if (plugins.agent.postLaunchSetup) {
       try {
+        const metadataBeforePostLaunch = { ...(restoredSession.metadata ?? {}) };
         await plugins.agent.postLaunchSetup(restoredSession);
 
-        if (Object.keys(restoredSession.metadata || {}).length > 0) {
-          updateMetadata(sessionsDir, sessionId, restoredSession.metadata);
+        const metadataAfterPostLaunch = restoredSession.metadata ?? {};
+        const metadataUpdates = Object.fromEntries(
+          Object.entries(metadataAfterPostLaunch).filter(
+            ([key, value]) => metadataBeforePostLaunch[key] !== value,
+          ),
+        );
+
+        if (Object.keys(metadataUpdates).length > 0) {
+          updateMetadata(sessionsDir, sessionId, metadataUpdates);
         }
       } catch {
         // Non-fatal — session is already running
