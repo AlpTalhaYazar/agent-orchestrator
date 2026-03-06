@@ -195,6 +195,13 @@ export async function ensureLifecycleWorker(
     });
 
     child.unref();
+
+    // Write PID from the parent immediately after spawn to close the TOCTOU
+    // window: without this, a second concurrent `ensureLifecycleWorker` call
+    // could pass the "not running" check before the child writes its own PID.
+    if (child.pid) {
+      writeLifecycleWorkerPid(config, projectId, child.pid);
+    }
   } finally {
     closeSync(stdoutFd);
     closeSync(stderrFd);
