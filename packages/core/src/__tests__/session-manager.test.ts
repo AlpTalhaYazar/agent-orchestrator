@@ -1759,8 +1759,8 @@ describe("cleanup", () => {
 
     const deleteLog = readFileSync(deleteLogPath, "utf-8");
     expect(deleteLog).toContain("session delete ses_archived_project2");
-    expect(result.killed).toContain("app-1");
-    expect(result.skipped).not.toContain("app-1");
+    expect(result.killed).toContain("my-app-2:app-1");
+    expect(result.skipped).toContain("my-app:app-1");
   });
 
   it("skips invalid archived OpenCode session ids during cleanup", async () => {

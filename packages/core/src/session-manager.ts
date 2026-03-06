@@ -1248,21 +1248,31 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
       sessions.map((session) => `${session.projectId}:${session.id}`),
     );
 
-    const pushUnique = (list: string[], id: string): void => {
-      if (!list.includes(id)) list.push(id);
-    };
+    const killedKeys = new Set<string>();
+    const skippedKeys = new Set<string>();
 
-    const pushKilled = (id: string): void => {
-      const skippedIndex = result.skipped.indexOf(id);
-      if (skippedIndex >= 0) {
-        result.skipped.splice(skippedIndex, 1);
+    const toEntryKey = (entryProjectId: string, id: string): string => `${entryProjectId}:${id}`;
+    const fromEntryKey = (entryKey: string): { projectId: string; id: string } => {
+      const separatorIndex = entryKey.indexOf(":");
+      if (separatorIndex === -1) {
+        return { projectId: "", id: entryKey };
       }
-      pushUnique(result.killed, id);
+      return {
+        projectId: entryKey.slice(0, separatorIndex),
+        id: entryKey.slice(separatorIndex + 1),
+      };
     };
 
-    const pushSkipped = (id: string): void => {
-      if (result.killed.includes(id)) return;
-      pushUnique(result.skipped, id);
+    const pushKilled = (entryProjectId: string, id: string): void => {
+      const key = toEntryKey(entryProjectId, id);
+      skippedKeys.delete(key);
+      killedKeys.add(key);
+    };
+
+    const pushSkipped = (entryProjectId: string, id: string): void => {
+      const key = toEntryKey(entryProjectId, id);
+      if (killedKeys.has(key)) return;
+      skippedKeys.add(key);
     };
 
     for (const session of sessions) {
@@ -1271,13 +1281,13 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         // Check explicit role metadata first, fall back to naming convention
         // for pre-existing sessions spawned before the role field was added.
         if (session.metadata["role"] === "orchestrator" || session.id.endsWith("-orchestrator")) {
-          pushSkipped(session.id);
+          pushSkipped(session.projectId, session.id);
           continue;
         }
 
         const project = config.projects[session.projectId];
         if (!project) {
-          pushSkipped(session.id);
+          pushSkipped(session.projectId, session.id);
           continue;
         }
 
@@ -1320,9 +1330,9 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           if (!options?.dryRun) {
             await kill(session.id, { purgeOpenCode: true });
           }
-          pushKilled(session.id);
+          pushKilled(session.projectId, session.id);
         } else {
-          pushSkipped(session.id);
+          pushSkipped(session.projectId, session.id);
         }
       } catch (err) {
         result.errors.push({
@@ -1343,14 +1353,14 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
         if (!archived) continue;
 
         if (archived["role"] === "orchestrator" || archivedId.endsWith("-orchestrator")) {
-          pushSkipped(archivedId);
+          pushSkipped(projectKey, archivedId);
           continue;
         }
 
         const cleanupAgent = archived["agent"] ?? project.agent ?? config.defaults.agent;
         const mappedOpenCodeSessionId = asValidOpenCodeSessionId(archived["opencodeSessionId"]);
         if (cleanupAgent === "opencode" && archived["opencodeCleanedAt"]) {
-          pushSkipped(archivedId);
+          pushSkipped(projectKey, archivedId);
           continue;
         }
         if (cleanupAgent === "opencode" && mappedOpenCodeSessionId) {
@@ -1366,12 +1376,27 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
               continue;
             }
           }
-          pushKilled(archivedId);
+          pushKilled(projectKey, archivedId);
         } else {
-          pushSkipped(archivedId);
+          pushSkipped(projectKey, archivedId);
         }
       }
     }
+
+    const allEntryKeys = [...killedKeys, ...skippedKeys];
+    const idCounts = new Map<string, number>();
+    for (const entryKey of allEntryKeys) {
+      const { id } = fromEntryKey(entryKey);
+      idCounts.set(id, (idCounts.get(id) ?? 0) + 1);
+    }
+
+    const formatEntry = (entryKey: string): string => {
+      const { projectId: entryProjectId, id } = fromEntryKey(entryKey);
+      return (idCounts.get(id) ?? 0) > 1 ? `${entryProjectId}:${id}` : id;
+    };
+
+    result.killed = [...killedKeys].map(formatEntry);
+    result.skipped = [...skippedKeys].map(formatEntry);
 
     return result;
   }
