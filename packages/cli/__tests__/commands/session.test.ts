@@ -46,6 +46,7 @@ const {
     spawn: vi.fn(),
     spawnOrchestrator: vi.fn(),
     send: vi.fn(),
+    claimPR: vi.fn(),
   },
   sessionsDirRef: { current: "" },
 }));
