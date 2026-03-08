@@ -69,16 +69,6 @@ process.stdin.on('data', c => input += c).on('end', () => {
   return script.replace(/\n/g, " ").replace(/\s+/g, " ");
 }
 
-function buildContinueSessionCommand(sessionTitle: string, sharedOptions: string[]): string {
-  const script = buildSessionLookupScript();
-  const options = sharedOptions.length > 0 ? ` ${sharedOptions.join(" ")}` : "";
-  return [
-    `SES_ID=$(opencode session list --format json | node -e ${shellEscape(script)} ${shellEscape(sessionTitle)})`,
-    '[ -n "$SES_ID" ]',
-    `exec opencode --session "$SES_ID"${options}`,
-  ].join(" && ");
-}
-
 // =============================================================================
 // Plugin Manifest
 // =============================================================================
