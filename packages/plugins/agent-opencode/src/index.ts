@@ -37,38 +37,6 @@ function parseSessionList(raw: string): OpenCodeSessionListEntry[] {
   });
 }
 
-function buildSessionLookupScript(): string {
-  const script = `
-let input = '';
-process.stdin.on('data', c => input += c).on('end', () => {
-  const title = process.argv[1];
-  let rows;
-  try { rows = JSON.parse(input); } catch { process.exit(1); }
-  if (!Array.isArray(rows)) process.exit(1);
-  const isValidId = id => /^ses_[A-Za-z0-9_-]+$/.test(id);
-  const timestamp = value => {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string') {
-      const parsed = Date.parse(value);
-      return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
-    }
-    return Number.NEGATIVE_INFINITY;
-  };
-  const matches = rows
-    .filter(r => r && r.title === title && typeof r.id === 'string' && isValidId(r.id))
-    .sort((a, b) => {
-      const ta = timestamp(a.updated);
-      const tb = timestamp(b.updated);
-      if (ta === tb) return 0;
-      return tb - ta;
-    });
-  if (matches.length === 0) process.exit(1);
-  process.stdout.write(matches[0].id);
-});
-  `.trim();
-  return script.replace(/\n/g, " ").replace(/\s+/g, " ");
-}
-
 // =============================================================================
 // Plugin Manifest
 // =============================================================================
