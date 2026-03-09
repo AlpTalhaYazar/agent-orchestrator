@@ -5,7 +5,7 @@ import { loadConfig, SessionNotRestorableError, WorkspaceMissingError } from "@c
 import { runRecovery, recoverSessionById } from "@composio/ao-core/recovery";
 import { git, getTmuxActivity, tmux } from "../lib/shell.js";
 import { formatAge } from "../lib/format.js";
-import { getSessionManager } from "../lib/create-session-manager.js";
+import { getSessionManager, getPluginRegistry } from "../lib/create-session-manager.js";
 
 export function registerSession(program: Command): void {
   const session = program
@@ -302,19 +302,29 @@ export function registerSession(program: Command): void {
           process.exit(1);
         }
 
-        const { createPluginRegistry } = await import("@composio/ao-core");
-        const registry = createPluginRegistry();
-        await registry.loadBuiltins(config);
+        const registry = await getPluginRegistry(config);
 
         if (opts.all || !sessionId) {
           console.log(chalk.bold("Scanning for orphaned sessions...\n"));
 
-          const { report, assessments } = await runRecovery({
-            config,
-            registry,
-            dryRun: opts.dryRun,
-            projectFilter: opts.project,
-          });
+          let report, assessments;
+          try {
+            const result = await runRecovery({
+              config,
+              registry,
+              dryRun: opts.dryRun,
+              projectFilter: opts.project,
+            });
+            report = result.report;
+            assessments = result.assessments;
+          } catch (err) {
+            console.error(
+              chalk.red(
+                `Recovery scan failed: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            );
+            process.exit(1);
+          }
 
           if (opts.dryRun) {
             for (const a of assessments) {
