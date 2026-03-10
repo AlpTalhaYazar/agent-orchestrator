@@ -65,6 +65,8 @@ import {
 } from "./paths.js";
 import { asValidOpenCodeSessionId } from "./opencode-session-id.js";
 import { normalizeOrchestratorSessionStrategy } from "./orchestrator-session-strategy.js";
+import { parsePrFromUrl } from "./utils/pr.js";
+import { safeJsonParse, validateStatus } from "./utils/validation.js";
 
 const execFileAsync = promisify(execFile);
 const OPENCODE_DISCOVERY_TIMEOUT_MS = 2_000;
@@ -185,35 +187,6 @@ function getNextSessionNumber(existingSessions: string[], prefix: string): numbe
   return max + 1;
 }
 
-/** Safely parse JSON, returning null on failure. */
-function safeJsonParse<T>(str: string): T | null {
-  try {
-    return JSON.parse(str) as T;
-  } catch {
-    return null;
-  }
-}
-
-/** Valid session statuses for validation. */
-const VALID_STATUSES: ReadonlySet<string> = new Set([
-  "spawning",
-  "working",
-  "pr_open",
-  "ci_failed",
-  "review_pending",
-  "changes_requested",
-  "approved",
-  "mergeable",
-  "merged",
-  "cleanup",
-  "needs_input",
-  "stuck",
-  "errored",
-  "killed",
-  "done",
-  "terminated",
-]);
-
 const PR_TRACKING_STATUSES: ReadonlySet<string> = new Set([
   "pr_open",
   "ci_failed",
@@ -233,14 +206,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Validate and normalize a status string. */
-function validateStatus(raw: string | undefined): SessionStatus {
-  // Bash scripts write "starting" — treat as "working"
-  if (raw === "starting") return "working";
-  if (raw && VALID_STATUSES.has(raw)) return raw as SessionStatus;
-  return "spawning";
-}
-
 /** Reconstruct a Session object from raw metadata key=value pairs. */
 function metadataToSession(
   sessionId: SessionId,
@@ -257,21 +222,30 @@ function metadataToSession(
     issueId: meta["issue"] || null,
     pr: meta["pr"]
       ? (() => {
-          // Parse owner/repo from GitHub PR URL: https://github.com/owner/repo/pull/123
-          const prUrl = meta["pr"];
-          const ghMatch = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-          return {
-            number: ghMatch
-              ? parseInt(ghMatch[3], 10)
-              : parseInt(prUrl.match(/\/(\d+)$/)?.[1] ?? "0", 10),
-            url: prUrl,
-            title: "",
-            owner: ghMatch?.[1] ?? "",
-            repo: ghMatch?.[2] ?? "",
-            branch: meta["branch"] ?? "",
-            baseBranch: "",
-            isDraft: false,
-          };
+          const parsed = parsePrFromUrl(meta["pr"]);
+          if (parsed) {
+            return {
+              number: parsed.number,
+              url: meta["pr"],
+              title: "",
+              owner: parsed.owner,
+              repo: parsed.repo,
+              branch: meta["branch"] ?? "",
+              baseBranch: "",
+              isDraft: false,
+            };
+          } else {
+            return {
+              number: 0,
+              url: meta["pr"],
+              title: "",
+              owner: "",
+              repo: "",
+              branch: meta["branch"] ?? "",
+              baseBranch: "",
+              isDraft: false,
+            };
+          }
         })()
       : null,
     workspacePath: meta["worktree"] || null,

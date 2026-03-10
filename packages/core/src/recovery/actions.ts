@@ -1,6 +1,7 @@
 import type { OrchestratorConfig, PluginRegistry, Runtime, Workspace, Session } from "../types.js";
 import { updateMetadata, deleteMetadata } from "../metadata.js";
 import { getSessionsDir } from "../paths.js";
+import { parsePrFromUrl } from "../utils/pr.js";
 import type { RecoveryAssessment, RecoveryResult, RecoveryContext } from "./types.js";
 
 export async function recoverSession(
@@ -42,16 +43,19 @@ export async function recoverSession(
       branch: rawMetadata["branch"] || null,
       issueId: rawMetadata["issue"] || null,
       pr: rawMetadata["pr"]
-        ? {
-            number: 0,
-            url: rawMetadata["pr"],
-            title: "",
-            owner: "",
-            repo: "",
-            branch: rawMetadata["branch"] || "",
-            baseBranch: "",
-            isDraft: false,
-          }
+        ? (() => {
+            const parsed = parsePrFromUrl(rawMetadata["pr"]);
+            return {
+              number: parsed?.number ?? 0,
+              url: rawMetadata["pr"],
+              title: "",
+              owner: parsed?.owner ?? "",
+              repo: parsed?.repo ?? "",
+              branch: rawMetadata["branch"] || "",
+              baseBranch: "",
+              isDraft: false,
+            };
+          })()
         : null,
       workspacePath: rawMetadata["worktree"] || null,
       runtimeHandle: assessment.runtimeHandle,

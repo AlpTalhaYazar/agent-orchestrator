@@ -10,40 +10,9 @@ import {
   type SessionStatus,
   type ActivityState,
 } from "../types.js";
+import { safeJsonParse, validateStatus } from "../utils/validation.js";
 import type { ScannedSession } from "./scanner.js";
 import type { RecoveryAssessment, RecoveryClassification, RecoveryAction } from "./types.js";
-
-function safeJsonParse<T>(str: string): T | null {
-  try {
-    return JSON.parse(str) as T;
-  } catch {
-    return null;
-  }
-}
-
-function validateStatus(raw: string | undefined): SessionStatus {
-  if (raw === "starting") return "working";
-  const validStatuses = new Set([
-    "spawning",
-    "working",
-    "pr_open",
-    "ci_failed",
-    "review_pending",
-    "changes_requested",
-    "approved",
-    "mergeable",
-    "merged",
-    "cleanup",
-    "needs_input",
-    "stuck",
-    "errored",
-    "killed",
-    "done",
-    "terminated",
-  ]);
-  if (raw && validStatuses.has(raw)) return raw as SessionStatus;
-  return "spawning";
-}
 
 export async function validateSession(
   scanned: ScannedSession,
