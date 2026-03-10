@@ -300,8 +300,12 @@ function deriveSessionStatusTransition(
   // During rate limiting, CI/review data can be stale defaults.
   if (rateLimited) return null;
 
-  if (currentStatus === SESSION_STATUS.CI_FAILED && pr.ciStatus === "passing") {
-    return SESSION_STATUS.PR_OPEN;
+  if (currentStatus === SESSION_STATUS.CI_FAILED) {
+    // Keep ci_failed authoritative until CI recovers.
+    if (pr.ciStatus === "passing") {
+      return SESSION_STATUS.PR_OPEN;
+    }
+    return null;
   }
   if (pr.reviewDecision === "approved") {
     return SESSION_STATUS.APPROVED;
