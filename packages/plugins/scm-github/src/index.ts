@@ -433,7 +433,7 @@ function parseGitHubWebhookEvent(
       repository,
       branch: parseBranchRef(payload["ref"]),
       sha: typeof payload["after"] === "string" ? (payload["after"] as string) : undefined,
-      timestamp: parseTimestamp(payload["updated_at"] ?? headCommit?.["timestamp"]),
+      timestamp: parseTimestamp(headCommit?.["timestamp"] ?? payload["updated_at"]),
       data: payload,
     };
   }
