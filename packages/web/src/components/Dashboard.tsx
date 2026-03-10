@@ -6,6 +6,7 @@ import {
   type DashboardStats,
   type DashboardPR,
   type AttentionLevel,
+  type GlobalPauseState,
   getAttentionLevel,
   isPRRateLimited,
 } from "@/lib/types";
@@ -16,7 +17,6 @@ import { DynamicFavicon } from "./DynamicFavicon";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { ProjectSidebar } from "./ProjectSidebar";
 import type { ProjectInfo } from "@/lib/project-name";
-import type { GlobalPauseState } from "@/lib/types";
 
 interface DashboardProps {
   initialSessions: DashboardSession[];
