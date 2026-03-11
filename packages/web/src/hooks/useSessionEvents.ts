@@ -2,6 +2,7 @@
 
 import { useEffect, useReducer, useRef } from "react";
 import type { DashboardSession, GlobalPauseState, SSESnapshotEvent } from "@/lib/types";
+import { apiPath } from "@/lib/api-path";
 
 const MEMBERSHIP_REFRESH_DELAY_MS = 120;
 const STALE_REFRESH_INTERVAL_MS = 15000;
@@ -78,7 +79,9 @@ export function useSessionEvents(
   }, [initialSessions, initialGlobalPause]);
 
   useEffect(() => {
-    const url = project ? `/api/events?project=${encodeURIComponent(project)}` : "/api/events";
+    const url = project
+      ? apiPath(`/api/events?project=${encodeURIComponent(project)}`)
+      : apiPath("/api/events");
     const es = new EventSource(url);
     let disposed = false;
     let activeRefreshController: AbortController | null = null;
@@ -102,8 +105,8 @@ export function useSessionEvents(
         activeRefreshController = refreshController;
 
         const sessionsUrl = project
-          ? `/api/sessions?project=${encodeURIComponent(project)}`
-          : "/api/sessions";
+          ? apiPath(`/api/sessions?project=${encodeURIComponent(project)}`)
+          : apiPath("/api/sessions");
 
         void fetch(sessionsUrl, { signal: refreshController.signal })
           .then((res) => (res.ok ? res.json() : null))
@@ -149,10 +152,11 @@ export function useSessionEvents(
         const data = JSON.parse(event.data as string) as { type: string };
         if (data.type === "snapshot") {
           const snapshot = data as SSESnapshotEvent;
-          dispatch({ type: "snapshot", patches: snapshot.sessions });
+          const workerPatches = snapshot.sessions.filter((s) => !s.id.endsWith("-orchestrator"));
+          dispatch({ type: "snapshot", patches: workerPatches });
 
           const currentMembershipKey = createMembershipKey(sessionsRef.current);
-          const snapshotMembershipKey = createMembershipKey(snapshot.sessions);
+          const snapshotMembershipKey = createMembershipKey(workerPatches);
 
           if (currentMembershipKey !== snapshotMembershipKey) {
             pendingMembershipKeyRef.current = snapshotMembershipKey;
