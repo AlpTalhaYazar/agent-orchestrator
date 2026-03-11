@@ -141,7 +141,7 @@ function buildIssueInput(report: NormalizedFeedbackReport): CreateIssueInput {
     "",
     "## Evidence",
     report.evidence || "No evidence provided",
-  ].filter((line): line is string => Boolean(line));
+  ].filter((line): line is string => line !== undefined);
 
   return {
     title: report.title,
