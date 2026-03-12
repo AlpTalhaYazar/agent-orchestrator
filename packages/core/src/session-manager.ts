@@ -1786,7 +1786,6 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
           pushSkipped(projectKey, archivedId);
           continue;
         }
-        if (cleanupAgent === "opencode" && mappedOpenCodeSessionId && shouldPurgeOpenCode) {
         if (cleanupAgent === "opencode" && archived["opencodeCleanedAt"]) {
           if (archivedResourcesCleaned) {
             pushKilled(projectKey, archivedId);
