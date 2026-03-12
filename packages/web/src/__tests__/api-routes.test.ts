@@ -196,7 +196,6 @@ vi.mock("@/lib/services", () => ({
 
 import { GET as sessionsGET } from "@/app/api/sessions/route";
 import { POST as orchestratorsPOST } from "@/app/api/orchestrators/route";
-import { GET as projectsGET } from "@/app/api/projects/route";
 import { POST as spawnPOST } from "@/app/api/spawn/route";
 import { POST as sendPOST } from "@/app/api/sessions/[id]/send/route";
 import { POST as messagePOST } from "@/app/api/sessions/[id]/message/route";
