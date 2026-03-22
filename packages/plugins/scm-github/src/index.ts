@@ -72,7 +72,7 @@ async function execCli(bin: ExecCommand, args: string[], cwd?: string): Promise<
   }
 }
 
-// Module-level gh function - can be replaced for testing
+// Module-level gh function
 let _gh = (args: string[]): Promise<string> => execCli("gh", args);
 
 async function gh(args: string[]): Promise<string> {
@@ -1080,14 +1080,6 @@ export function create(): SCM {
 export { ghCache } from "./cache.js";
 
 export default { manifest, create } satisfies PluginModule<SCM>;
-
-// Export for testing - allows tests to mock the underlying gh function
-export { _gh as __internalGhForTesting__ };
-
-// Export for testing - allows tests to set a custom gh implementation
-export function __setGhImplementationForTesting__(fn: (args: string[]) => Promise<string>) {
-  _gh = fn;
-}
 
 // Export for testing - allows tests to clear the cache between test runs
 export function __clearGhCacheForTesting__() {
