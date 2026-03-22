@@ -46,32 +46,32 @@ describe("GhCache", () => {
   describe("get() and set()", () => {
     it("stores and retrieves values", () => {
       cache.set("key1", "value1", 60_000);
-      expect(cache.get("key1", 60_000)).toBe("value1");
+      expect(cache.get("key1")).toBe("value1");
     });
 
     it("returns null for non-existent keys", () => {
-      expect(cache.get("nonexistent", 60_000)).toBeNull();
+      expect(cache.get("nonexistent")).toBeNull();
     });
 
     it("stores and retrieves complex objects", () => {
       const complexValue = { nested: { data: [1, 2, 3] }, text: "hello" };
       cache.set("complex", complexValue, 60_000);
-      expect(cache.get("complex", 60_000)).toEqual(complexValue);
+      expect(cache.get("complex")).toEqual(complexValue);
     });
 
     it("evicts expired entries", async () => {
       cache.set("expired", "value", 1); // 1ms TTL
-      expect(cache.get("expired", 1)).toBe("value"); // Still valid
+      expect(cache.get("expired")).toBe("value"); // Still valid
 
       // Wait for expiration
       await new Promise((resolve) => setTimeout(resolve, 10));
-      expect(cache.get("expired", 1)).toBeNull(); // Now expired
+      expect(cache.get("expired")).toBeNull(); // Now expired
     });
 
     it("overwrites existing values with same key", () => {
       cache.set("key", "first", 60_000);
       cache.set("key", "second", 60_000);
-      expect(cache.get("key", 60_000)).toBe("second");
+      expect(cache.get("key")).toBe("second");
     });
   });
 
@@ -159,17 +159,17 @@ describe("GhCache", () => {
 
       cache.invalidatePR({ owner: "owner", repo: "repo", number: 123 });
 
-      expect(cache.get("gh:pr:owner/repo:123:view", 60_000)).toBeNull();
-      expect(cache.get("gh:pr:owner/repo:123:checks", 60_000)).toBeNull();
-      expect(cache.get("gh:pr:owner/repo:456:view", 60_000)).toBe("data3");
-      expect(cache.get("gh:pr:different/repo:123:view", 60_000)).toBe("data4");
+      expect(cache.get("gh:pr:owner/repo:123:view")).toBeNull();
+      expect(cache.get("gh:pr:owner/repo:123:checks")).toBeNull();
+      expect(cache.get("gh:pr:owner/repo:456:view")).toBe("data3");
+      expect(cache.get("gh:pr:different/repo:123:view")).toBe("data4");
     });
 
     it("does not affect cache if no matching entries", () => {
       cache.set("gh:api:repos:...", "data", 60_000);
       cache.invalidatePR({ owner: "owner", repo: "repo", number: 123 });
 
-      expect(cache.get("gh:api:repos:...", 60_000)).toBe("data");
+      expect(cache.get("gh:api:repos:...")).toBe("data");
     });
   });
 
@@ -181,9 +181,9 @@ describe("GhCache", () => {
 
       cache.invalidateRepo("owner", "repo");
 
-      expect(cache.get("gh:pr:owner/repo:123:view", 60_000)).toBeNull();
-      expect(cache.get("gh:pr:owner/repo:456:checks", 60_000)).toBeNull();
-      expect(cache.get("gh:pr:other/repo:123:view", 60_000)).toBe("data3");
+      expect(cache.get("gh:pr:owner/repo:123:view")).toBeNull();
+      expect(cache.get("gh:pr:owner/repo:456:checks")).toBeNull();
+      expect(cache.get("gh:pr:other/repo:123:view")).toBe("data3");
     });
   });
 
@@ -206,7 +206,7 @@ describe("GhCache", () => {
       // Simulate expiration
       cache.set("key3", "value3", 1);
       await new Promise((resolve) => setTimeout(resolve, 10));
-      cache.get("key3", 1); // This will delete expired entry
+      cache.get("key3"); // This will delete expired entry
       expect(cache.getStats().size).toBe(2);
     });
 
@@ -233,8 +233,8 @@ describe("GhCache", () => {
       cache.clear();
 
       expect(cache.getStats().size).toBe(0);
-      expect(cache.get("key1", 60_000)).toBeNull();
-      expect(cache.get("key2", 60_000)).toBeNull();
+      expect(cache.get("key1")).toBeNull();
+      expect(cache.get("key2")).toBeNull();
     });
 
     it("clears pending requests", async () => {
@@ -268,13 +268,13 @@ describe("GhCache", () => {
 
       // Second request - should use cache
       cache.set(key1, result1, 30_000);
-      const cached = cache.get(key1, 30_000);
+      const cached = cache.get(key1);
       expect(cached).toBe(result1);
       expect(apiCalls).toBe(1);
 
       // Invalidate and fetch again
       cache.invalidatePR({ owner: "owner", repo: "repo", number: 123 });
-      expect(cache.get(key1, 30_000)).toBeNull();
+      expect(cache.get(key1)).toBeNull();
 
       const result2 = await cache.dedupe(key1, () => mockFetch(123));
       expect(apiCalls).toBe(2);
