@@ -33,6 +33,7 @@ import {
   parseWebhookJsonObject,
   parseWebhookTimestamp,
 } from "@composio/ao-core/scm-webhook-utils";
+import { ghDeduplicator } from "./dedupe.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -79,6 +80,15 @@ async function ghInDir(args: string[], cwd: string): Promise<string> {
   return execCli("gh", args, cwd);
 }
 
+/**
+ * Deduplicates concurrent gh CLI calls with the same arguments.
+ * Multiple simultaneous calls with identical args will share the same promise.
+ */
+async function dedupeGh(args: string[]): Promise<string> {
+  const key = `gh:${args.join(":")}`;
+  return ghDeduplicator.dedupe(key, async () => gh(args));
+}
+
 async function git(args: string[], cwd: string): Promise<string> {
   return execCli("git", args, cwd);
 }
@@ -114,6 +124,48 @@ function prInfoFromView(
     baseBranch: data.baseRefName,
     isDraft: data.isDraft,
   };
+}
+
+/**
+ * Cache for batched PR view data.
+ * Uses WeakMap to automatically clean up when PRInfo objects are GC'd.
+ */
+const prViewDataCache = new WeakMap<
+  PRInfo,
+  {
+    state: string;
+    title: string;
+    additions: number;
+    deletions: number;
+    reviewDecision: string;
+    reviews: unknown[];
+    mergeable: string;
+    mergeStateStatus: string;
+    isDraft: boolean;
+  }
+>();
+
+/**
+ * Fetches all PR fields in a single gh call and caches the result.
+ * This reduces multiple gh pr view calls to just one per PR per enrichment cycle.
+ */
+async function getBatchedPRData(pr: PRInfo) {
+  const cached = prViewDataCache.get(pr);
+  if (cached) return cached;
+
+  const raw = await dedupeGh([
+    "pr",
+    "view",
+    String(pr.number),
+    "--repo",
+    repoFlag(pr),
+    "--json",
+    "state,title,additions,deletions,reviewDecision,reviews,mergeable,mergeStateStatus,isDraft",
+  ]);
+
+  const data = JSON.parse(raw);
+  prViewDataCache.set(pr, data);
+  return data;
 }
 
 function isUnsupportedPrChecksJsonError(err: unknown): boolean {
@@ -158,7 +210,7 @@ function mapRawCheckStateToStatus(rawState: string | undefined): CICheck["status
 }
 
 async function getCIChecksFromStatusRollup(pr: PRInfo): Promise<CICheck[]> {
-  const raw = await gh([
+  const raw = await dedupeGh([
     "pr",
     "view",
     String(pr.number),
@@ -586,16 +638,7 @@ function createGitHubSCM(): SCM {
     },
 
     async getPRState(pr: PRInfo): Promise<PRState> {
-      const raw = await gh([
-        "pr",
-        "view",
-        String(pr.number),
-        "--repo",
-        repoFlag(pr),
-        "--json",
-        "state",
-      ]);
-      const data: { state: string } = JSON.parse(raw);
+      const data = await getBatchedPRData(pr);
       const s = data.state.toUpperCase();
       if (s === "MERGED") return "merged";
       if (s === "CLOSED") return "closed";
@@ -603,21 +646,7 @@ function createGitHubSCM(): SCM {
     },
 
     async getPRSummary(pr: PRInfo) {
-      const raw = await gh([
-        "pr",
-        "view",
-        String(pr.number),
-        "--repo",
-        repoFlag(pr),
-        "--json",
-        "state,title,additions,deletions",
-      ]);
-      const data: {
-        state: string;
-        title: string;
-        additions: number;
-        deletions: number;
-      } = JSON.parse(raw);
+      const data = await getBatchedPRData(pr);
       const s = data.state.toUpperCase();
       const state: PRState = s === "MERGED" ? "merged" : s === "CLOSED" ? "closed" : "open";
       return {
@@ -640,7 +669,7 @@ function createGitHubSCM(): SCM {
 
     async getCIChecks(pr: PRInfo): Promise<CICheck[]> {
       try {
-        const raw = await gh([
+        const raw = await dedupeGh([
           "pr",
           "checks",
           String(pr.number),
@@ -678,10 +707,10 @@ function createGitHubSCM(): SCM {
       }
     },
 
-    async getCISummary(pr: PRInfo): Promise<CIStatus> {
-      let checks: CICheck[];
+    async getCISummary(pr: PRInfo, checks?: CICheck[]): Promise<CIStatus> {
+      let ciChecks: CICheck[];
       try {
-        checks = await this.getCIChecks(pr);
+        ciChecks = checks ?? (await this.getCIChecks(pr));
       } catch {
         // Before fail-closing, check if the PR is merged/closed —
         // GitHub may not return check data for those, and reporting
@@ -696,42 +725,31 @@ function createGitHubSCM(): SCM {
         // "none" (which getMergeability treats as passing).
         return "failing";
       }
-      if (checks.length === 0) return "none";
+      if (ciChecks.length === 0) return "none";
 
-      const hasFailing = checks.some((c) => c.status === "failed");
+      const hasFailing = ciChecks.some((c) => c.status === "failed");
       if (hasFailing) return "failing";
 
-      const hasPending = checks.some((c) => c.status === "pending" || c.status === "running");
+      const hasPending = ciChecks.some((c) => c.status === "pending" || c.status === "running");
       if (hasPending) return "pending";
 
       // Only report passing if at least one check actually passed
       // (not all skipped)
-      const hasPassing = checks.some((c) => c.status === "passed");
+      const hasPassing = ciChecks.some((c) => c.status === "passed");
       if (!hasPassing) return "none";
 
       return "passing";
     },
 
     async getReviews(pr: PRInfo): Promise<Review[]> {
-      const raw = await gh([
-        "pr",
-        "view",
-        String(pr.number),
-        "--repo",
-        repoFlag(pr),
-        "--json",
-        "reviews",
-      ]);
-      const data: {
-        reviews: Array<{
-          author: { login: string };
-          state: string;
-          body: string;
-          submittedAt: string;
-        }>;
-      } = JSON.parse(raw);
+      const data = await getBatchedPRData(pr);
 
-      return data.reviews.map((r) => {
+      return (data.reviews as Array<{
+        author: { login: string };
+        state: string;
+        body: string;
+        submittedAt: string;
+      }>).map((r) => {
         let state: Review["state"];
         const s = r.state?.toUpperCase();
         if (s === "APPROVED") state = "approved";
@@ -750,16 +768,7 @@ function createGitHubSCM(): SCM {
     },
 
     async getReviewDecision(pr: PRInfo): Promise<ReviewDecision> {
-      const raw = await gh([
-        "pr",
-        "view",
-        String(pr.number),
-        "--repo",
-        repoFlag(pr),
-        "--json",
-        "reviewDecision",
-      ]);
-      const data: { reviewDecision: string } = JSON.parse(raw);
+      const data = await getBatchedPRData(pr);
 
       const d = (data.reviewDecision ?? "").toUpperCase();
       if (d === "APPROVED") return "approved";
@@ -771,7 +780,7 @@ function createGitHubSCM(): SCM {
     async getPendingComments(pr: PRInfo): Promise<ReviewComment[]> {
       try {
         // Use GraphQL with variables to get review threads with actual isResolved status
-        const raw = await gh([
+        const raw = await dedupeGh([
           "api",
           "graphql",
           "-f",
@@ -873,7 +882,7 @@ function createGitHubSCM(): SCM {
         }> = [];
 
         for (let page = 1; ; page++) {
-          const raw = await gh([
+          const raw = await dedupeGh([
             "api",
             "--method",
             "GET",
@@ -956,7 +965,7 @@ function createGitHubSCM(): SCM {
       }
 
       // Fetch PR details with merge state
-      const raw = await gh([
+      const raw = await dedupeGh([
         "pr",
         "view",
         String(pr.number),
