@@ -6,7 +6,7 @@
  *   npm run test:integration
  */
 
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { enrichSessionsPRBatch, generateBatchQuery } from "../src/graphql-batch.js";
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;

@@ -204,7 +204,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
    * Cleared at the start of each pollAll() call.
    * Key format: "${owner}/${repo}#${number}"
    */
-  let prEnrichmentCache = new Map<string, PREnrichmentData>();
+  const prEnrichmentCache = new Map<string, PREnrichmentData>();
 
   /**
    * Populate the PR enrichment cache using batch GraphQL queries.
@@ -240,7 +240,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
       if (!prsByPlugin.has(pluginKey)) {
         prsByPlugin.set(pluginKey, []);
       }
-      prsByPlugin.get(pluginKey)!.push(pr);
+      const pluginPRs = prsByPlugin.get(pluginKey);
+      if (pluginPRs) {
+        pluginPRs.push(pr);
+      }
     }
 
     // Fetch enrichment data for each plugin's PRs

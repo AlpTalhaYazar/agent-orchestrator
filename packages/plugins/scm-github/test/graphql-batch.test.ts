@@ -2,7 +2,7 @@
  * Unit tests for GraphQL batch PR enrichment.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   generateBatchQuery,
   MAX_BATCH_SIZE,
