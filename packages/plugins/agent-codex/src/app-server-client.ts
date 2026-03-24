@@ -47,14 +47,12 @@ export interface JsonRpcError {
 export class CodexClientError extends Error {
   code: string;
   readonly retryable: boolean;
-  readonly cause?: unknown;
 
   constructor(message: string, code: string, retryable: boolean = false, cause?: unknown) {
-    super(message);
+    super(message, cause !== undefined ? { cause } : undefined);
     this.name = "CodexClientError";
     this.code = code;
     this.retryable = retryable;
-    this.cause = cause;
     // Set the prototype explicitly for instanceof checks
     Object.setPrototypeOf(this, CodexClientError.prototype);
   }
@@ -345,7 +343,7 @@ export class CodexAppServerClient extends EventEmitter {
       });
 
       if (!this.process.stdout || !this.process.stdin) {
-        throw new ProcessError("Failed to open stdio pipes for codex app-server");
+        throw new StdioError("Failed to open stdio pipes for codex app-server");
       }
 
       // Drain stderr to prevent the child process from blocking when
