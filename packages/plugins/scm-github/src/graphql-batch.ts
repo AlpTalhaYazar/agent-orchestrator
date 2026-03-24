@@ -18,6 +18,14 @@ import type {
 const execFileAsync = promisify(execFile);
 
 /**
+ * Interface for errors with cause property (ES2022+).
+ * Used for better error tracking when cause is not available in older environments.
+ */
+interface ErrorWithCause extends Error {
+  cause?: unknown;
+}
+
+/**
  * Pre-flight check to verify gh CLI is available and authenticated.
  * This prevents silent failures during GraphQL batch queries.
  */
@@ -27,8 +35,8 @@ async function verifyGhCLI(): Promise<void> {
   } catch {
     const error = new Error(
       "gh CLI not available or not authenticated. GraphQL batch enrichment requires gh CLI to be installed and configured.",
-    );
-    (error as any).cause = "GH_CLI_UNAVAILABLE";
+    ) as ErrorWithCause;
+    error.cause = "GH_CLI_UNAVAILABLE";
     throw error;
   }
 }
@@ -482,6 +490,7 @@ export async function enrichSessionsPRBatch(
       // Log observability metric for successful batch
       const prCountAfter = result.size;
       if (prCountAfter > prCountBefore) {
+        // eslint-disable-next-line no-console -- Observability logging for batch success
         console.log(
           `[GraphQL Batch Success] Batch ${batchIndex + 1}/${batches.length} succeeded: ` +
           `added ${prCountAfter - prCountBefore} PRs to cache`
@@ -492,12 +501,13 @@ export async function enrichSessionsPRBatch(
       // We don't throw to avoid losing all batch results
       // Individual PRs that succeed via fallback will populate cache for next poll
       const errorMsg = err instanceof Error ? err.message : String(err);
-      const error = new Error(`Batch enrichment partially failed: ${errorMsg}`);
+      const error = new Error(`Batch enrichment partially failed: ${errorMsg}`) as ErrorWithCause;
       if (err instanceof Error) {
-        (error as any).cause = err;
+        error.cause = err;
       }
 
       // Log the error for observability but don't fail entirely
+      // eslint-disable-next-line no-console -- Observability logging for batch errors
       console.error(`[GraphQL Batch Warning] ${error.message}`);
 
       // Continue with next batch - failed PRs will use individual fallback
