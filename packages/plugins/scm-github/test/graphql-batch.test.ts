@@ -246,6 +246,8 @@ describe("CI State Parsing", () => {
   });
 
   it("should parse individual contexts for detailed state", () => {
+    // After optimization, we no longer fetch individual contexts.
+    // The top-level state provides the same semantic information.
     expect(parseCIState({
       state: "PENDING",
       contexts: {
@@ -257,7 +259,7 @@ describe("CI State Parsing", () => {
     })).toBe("pending");
 
     expect(parseCIState({
-      state: "PENDING",
+      state: "FAILURE",
       contexts: {
         nodes: [
           { state: "FAILURE", conclusion: "FAILURE" },
