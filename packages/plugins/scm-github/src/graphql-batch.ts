@@ -9,6 +9,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type {
   CIStatus,
+  ObservabilityLevel,
   PREnrichmentData,
   PRInfo,
   PRState,
@@ -16,6 +17,28 @@ import type {
 } from "@composio/ao-core";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Interface for recording GraphQL batch observability operations.
+ * Allows the caller to provide an observer that records to
+ * observability system instead of using console.log.
+ */
+export interface BatchObserver {
+  recordSuccess(data: {
+    batchIndex: number;
+    totalBatches: number;
+    prCount: number;
+    durationMs: number;
+  }): void;
+  recordFailure(data: {
+    batchIndex: number;
+    totalBatches: number;
+    prCount: number;
+    error: string;
+    durationMs: number;
+  }): void;
+  log(level: ObservabilityLevel, message: string): void;
+}
 
 /**
  * Interface for errors with cause property (ES2022+).
@@ -72,19 +95,6 @@ const PR_FIELDS = `
       commit {
         statusCheckRollup {
           state
-          contexts(first: 100) {
-            nodes {
-              ... on CheckRun {
-                name
-                status
-                conclusion
-              }
-              ... on StatusContext {
-                context
-                state
-              }
-            }
-          }
         }
       }
     }
@@ -200,46 +210,11 @@ async function executeBatchQuery(
 }
 
 /**
- * Type for CheckRun context from GraphQL API.
- * CheckRun uses 'status' field (not 'state') and has 'conclusion'.
- */
-interface CheckRunContext {
-  name?: string;
-  status?: string;
-  conclusion?: string;
-}
-
-/**
- * Type for StatusContext from GraphQL API.
- * StatusContext uses 'state' field only (no 'conclusion').
- */
-interface StatusContextType {
-  context?: string;
-  state?: string;
-}
-
-/**
- * Generic context type that handles union of CheckRun and StatusContext.
- * This allows more flexible parsing for test data and edge cases.
- */
-type GenericContext = CheckRunContext | StatusContextType | { state?: string; conclusion?: string };
-
-/**
- * Type guard to check if a context has 'status' field (CheckRun).
- */
-function hasStatusField(ctx: GenericContext): ctx is CheckRunContext {
-  return "status" in ctx;
-}
-
-/**
- * Type guard to check if a context has 'conclusion' field (CheckRun or hybrid).
- */
-function hasConclusionField(ctx: GenericContext): ctx is CheckRunContext | { state?: string; conclusion?: string } {
-  return "conclusion" in ctx;
-}
-
-/**
  * Parse raw CI state from status check rollup.
+ *
+ * Uses only the top-level aggregate state, which is much cheaper
+ * than fetching individual check contexts. The top-level state
+ * provides the same semantic information (passing/failing/pending).
  */
 function parseCIState(
   statusCheckRollup: unknown,
@@ -251,78 +226,9 @@ function parseCIState(
   const rollup = statusCheckRollup as Record<string, unknown>;
   const state = typeof rollup["state"] === "string" ? rollup["state"].toUpperCase() : "";
 
-  // Check individual contexts for detailed state - this takes precedence over
-  // the top-level state because contexts provide more granular information
-  const contexts = rollup["contexts"] as
-    | { nodes?: Array<GenericContext> }
-    | undefined;
-  if (contexts?.nodes && contexts.nodes.length > 0) {
-    const hasFailing = contexts.nodes.some(
-      (c) => {
-        // Handle CheckRun (has 'status' field): check conclusion for failure
-        if (hasStatusField(c)) {
-          return (
-            c.conclusion === "FAILURE" ||
-            c.conclusion === "TIMED_OUT" ||
-            c.conclusion === "ACTION_REQUIRED" ||
-            c.conclusion === "CANCELLED" ||
-            c.conclusion === "ERROR"
-          );
-        }
-        // Handle StatusContext (has 'conclusion' field): check state for failure
-        // This covers both pure StatusContext and hybrid test data
-        if (hasConclusionField(c)) {
-          return c.state === "FAILURE";
-        }
-        return false;
-      },
-    );
-    if (hasFailing) return "failing";
-
-    const hasPending = contexts.nodes.some(
-      (c) => {
-        // Handle CheckRun (has 'status' field): check status for pending
-        if (hasStatusField(c)) {
-          return (
-            c.status === "PENDING" ||
-            c.status === "QUEUED" ||
-            c.status === "IN_PROGRESS" ||
-            c.status === "EXPECTED" ||
-            c.status === "WAITING"
-          );
-        }
-        // Handle StatusContext (has 'conclusion' field): check state for pending
-        if (hasConclusionField(c)) {
-          return (
-            c.state === "PENDING" ||
-            c.state === "QUEUED" ||
-            c.state === "IN_PROGRESS" ||
-            c.state === "EXPECTED" ||
-            c.state === "WAITING"
-          );
-        }
-        return false;
-      },
-    );
-    if (hasPending) return "pending";
-
-    const hasPassing = contexts.nodes.some(
-      (c) => {
-        // Handle CheckRun (has 'status' field): check conclusion for success
-        if (hasStatusField(c)) {
-          return c.conclusion === "SUCCESS";
-        }
-        // Handle StatusContext (has 'conclusion' field): check state for success
-        if (hasConclusionField(c)) {
-          return c.state === "SUCCESS";
-        }
-        return false;
-      },
-    );
-    if (hasPassing) return "passing";
-  }
-
-  // Fall back to top-level state if no contexts found
+  // Map GitHub's statusCheckRollup.state to our CIStatus enum
+  // This top-level state aggregates all individual checks and is
+  // significantly cheaper than fetching contexts (10 points vs 50+ per PR)
   if (state === "SUCCESS") return "passing";
   if (state === "FAILURE") return "failing";
   if (state === "PENDING" || state === "EXPECTED") return "pending";
@@ -449,6 +355,7 @@ function extractPREnrichment(pullRequest: unknown): PREnrichmentData | null {
  */
 export async function enrichSessionsPRBatch(
   prs: PRInfo[],
+  observer?: BatchObserver,
 ): Promise<Map<string, PREnrichmentData>> {
   const result = new Map<string, PREnrichmentData>();
 
@@ -466,8 +373,12 @@ export async function enrichSessionsPRBatch(
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
     const prCountBefore = result.size;
+    const batchStartTime = Date.now();
+    let batchDuration: number;
+
     try {
       const data = await executeBatchQuery(batch);
+      batchDuration = Date.now() - batchStartTime;
 
       // Extract results for each PR in the batch
       batch.forEach((pr, index) => {
@@ -490,13 +401,19 @@ export async function enrichSessionsPRBatch(
       // Log observability metric for successful batch
       const prCountAfter = result.size;
       if (prCountAfter > prCountBefore) {
-        // eslint-disable-next-line no-console -- Observability logging for batch success
-        console.log(
-          `[GraphQL Batch Success] Batch ${batchIndex + 1}/${batches.length} succeeded: ` +
-          `added ${prCountAfter - prCountBefore} PRs to cache`
-        );
+        const successData = {
+          batchIndex,
+          totalBatches: batches.length,
+          prCount: prCountAfter - prCountBefore,
+          durationMs: batchDuration,
+        };
+        observer?.recordSuccess(successData);
+        observer?.log("info", `[GraphQL Batch Success] Batch ${batchIndex + 1}/${batches.length} succeeded: added ${prCountAfter - prCountBefore} PRs to cache (${batchDuration}ms)`);
       }
     } catch (err) {
+      // Calculate duration even on failure
+      batchDuration = Date.now() - batchStartTime;
+
       // Batch partially failed - log but continue with individual fallbacks
       // We don't throw to avoid losing all batch results
       // Individual PRs that succeed via fallback will populate cache for next poll
@@ -505,6 +422,15 @@ export async function enrichSessionsPRBatch(
       if (err instanceof Error) {
         error.cause = err;
       }
+
+      // Record failure for observability
+      observer?.recordFailure({
+        batchIndex,
+        totalBatches: batches.length,
+        prCount: batch.length,
+        error: errorMsg,
+        durationMs: batchDuration,
+      });
 
       // Log the error for observability but don't fail entirely
       // eslint-disable-next-line no-console -- Observability logging for batch errors
