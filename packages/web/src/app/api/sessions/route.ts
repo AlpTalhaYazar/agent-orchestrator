@@ -113,6 +113,7 @@ export async function GET(request: Request) {
     const scope = searchParams.get("scope");
     const projectFilter = searchParams.get("project");
     const activeOnly = searchParams.get("active") === "true";
+    const orchestratorOnly = searchParams.get("orchestratorOnly") === "true";
 
     // Portfolio scope: aggregate across all portfolio projects
     if (scope === "portfolio") {
@@ -125,10 +126,34 @@ export async function GET(request: Request) {
         ? projectFilter
         : undefined;
     const coreSessions = await sessionManager.list(requestedProjectId);
-    const allSessions = requestedProjectId ? await sessionManager.list() : coreSessions;
     const visibleSessions = filterProjectSessions(coreSessions, projectFilter, config.projects);
     const orchestrators = listDashboardOrchestrators(visibleSessions, config.projects);
     const orchestratorId = orchestrators.length === 1 ? (orchestrators[0]?.id ?? null) : null;
+
+    if (orchestratorOnly) {
+      recordApiObservation({
+        config,
+        method: "GET",
+        path: "/api/sessions",
+        correlationId,
+        startedAt,
+        outcome: "success",
+        statusCode: 200,
+        data: { orchestratorOnly: true, orchestratorCount: orchestrators.length },
+      });
+
+      return jsonWithCorrelation(
+        {
+          orchestratorId,
+          orchestrators,
+          sessions: [],
+        },
+        { status: 200 },
+        correlationId,
+      );
+    }
+
+    const allSessions = requestedProjectId ? await sessionManager.list() : coreSessions;
 
     let workerSessions = visibleSessions.filter((session) => !isOrchestratorSession(session));
 
