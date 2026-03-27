@@ -106,8 +106,17 @@ export async function GET(request: Request) {
           PER_PR_ENRICH_TIMEOUT_MS,
         );
       });
-      const enrichTimeout = new Promise<void>((resolve) => setTimeout(resolve, PR_ENRICH_TIMEOUT_MS));
-      await Promise.race([Promise.allSettled(enrichPromises), enrichTimeout]);
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const enrichTimeout = new Promise<void>((resolve) => {
+        timeoutId = setTimeout(resolve, PR_ENRICH_TIMEOUT_MS);
+      });
+      try {
+        await Promise.race([Promise.allSettled(enrichPromises), enrichTimeout]);
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      }
     }
 
     recordApiObservation({
