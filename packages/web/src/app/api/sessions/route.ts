@@ -148,8 +148,9 @@ export async function GET(request: Request) {
             const scm = getSCM(registry, project);
             if (!scm) return Promise.resolve();
 
+            // core.pr is guaranteed non-null after the filter above
             return settlesWithin(
-              enrichSessionPR(dashboardSessions[index], scm, core.pr),
+              enrichSessionPR(dashboardSessions[index], scm, core.pr!),
               PER_PR_ENRICH_TIMEOUT_MS,
             );
           },
