@@ -9,18 +9,48 @@
  */
 
 import { createHash } from "node:crypto";
-import { dirname, basename, join } from "node:path";
+import { dirname, basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { realpathSync, existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 
 /**
  * Generate a 12-character hash from a config directory path.
- * Always resolves symlinks before hashing to ensure consistency.
+ *
+ * The hash is derived from dirname(configPath), which equals the project root
+ * directory when configPath is <project>/agent-orchestrator.yaml.
+ *
+ * Handles non-existent paths gracefully (e.g. synthesized paths in remote/
+ * Docker mode where no local config file exists) by falling back to
+ * resolve() when realpathSync fails.
  */
 export function generateConfigHash(configPath: string): string {
-  const resolved = realpathSync(configPath);
+  let resolved: string;
+  try {
+    resolved = realpathSync(configPath);
+  } catch {
+    // File may not exist (remote mode, Docker, pre-creation) — use resolved path
+    resolved = resolve(configPath);
+  }
   const configDir = dirname(resolved);
   const hash = createHash("sha256").update(configDir).digest("hex");
+  return hash.slice(0, 12);
+}
+
+/**
+ * Generate a 12-character hash directly from a project directory path.
+ *
+ * Equivalent to generateConfigHash(<project>/agent-orchestrator.yaml) but
+ * does not require a config file to exist. Used in remote / Docker / shadow
+ * mode where the local config is absent.
+ */
+export function generateProjectHash(projectPath: string): string {
+  let resolved: string;
+  try {
+    resolved = realpathSync(projectPath);
+  } catch {
+    resolved = resolve(projectPath);
+  }
+  const hash = createHash("sha256").update(resolved).digest("hex");
   return hash.slice(0, 12);
 }
 

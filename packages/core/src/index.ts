@@ -141,6 +141,7 @@ export type {
 // Path utilities — hash-based directory structure
 export {
   generateConfigHash,
+  generateProjectHash,
   generateProjectId,
   generateInstanceId,
   generateSessionPrefix,
@@ -158,6 +159,21 @@ export {
   validateAndStoreOrigin,
 } from "./paths.js";
 
+// Global config — Option C hybrid architecture (global registry + local behavior)
+export {
+  getGlobalConfigPath,
+  loadGlobalConfig,
+  saveGlobalConfig,
+  loadLocalProjectConfig,
+  syncProjectShadow,
+  registerProjectInGlobalConfig,
+  buildEffectiveProjectConfig,
+  isProjectShadowStale,
+  isOldConfigFormat,
+  migrateToGlobalConfig,
+} from "./global-config.js";
+export type { GlobalConfig, GlobalProjectEntry, LocalProjectConfig } from "./global-config.js";
+
 // Config generator — auto-generate config from repo URL
 export {
   isRepoUrl,
@@ -170,6 +186,7 @@ export {
   isRepoAlreadyCloned,
   resolveCloneTarget,
   sanitizeProjectId,
+  readOriginRemoteUrl,
 } from "./config-generator.js";
 export type {
   ParsedRepoUrl,

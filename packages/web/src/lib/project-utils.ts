@@ -41,6 +41,10 @@ export function getProjectScopedHref(
   return projectId ? `${basePath}?project=${encodeURIComponent(projectId)}` : `${basePath}?project=all`;
 }
 
+export function getProjectSessionHref(projectId: string, sessionId: string): string {
+  return `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`;
+}
+
 export function filterWorkerSessions<T extends SessionLike>(
   sessions: T[],
   projectFilter: string | null | undefined,

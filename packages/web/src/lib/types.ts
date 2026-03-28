@@ -272,10 +272,17 @@ export interface PortfolioActionItem {
   triageRank: number; // Lower = more urgent
 }
 
+export interface PortfolioActivityItem {
+  session: DashboardSession;
+  projectId: string;
+  projectName: string;
+}
+
 /** Portfolio project summary for the project rail */
 export interface PortfolioProjectSummary {
   id: string;
   name: string;
+  repo?: string;
   sessionCount: number;
   activeCount: number;
   attentionCounts: Record<AttentionLevel, number>;

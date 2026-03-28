@@ -9,7 +9,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, mkdirSync, statSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, resolve } from "node:path";
 import type {
   PortfolioProject,
   PortfolioPreferences,
@@ -207,8 +207,19 @@ export function getPortfolio(): PortfolioProject[] {
 
   // Step 2: Add registered projects not already discovered
   for (const reg of registered.projects) {
-    // Try to find config for the registered path
-    const configPath = findConfigFile(reg.path);
+    // Try to find config directly at the registered path first, then fall back to findConfigFile.
+    // This avoids findConfigFile picking up a parent/CWD config that doesn't cover this project.
+    let configPath: string | null = null;
+    for (const filename of ["agent-orchestrator.yaml", "agent-orchestrator.yml"]) {
+      const candidate = resolve(reg.path, filename);
+      if (existsSync(candidate)) {
+        configPath = candidate;
+        break;
+      }
+    }
+    if (!configPath) {
+      configPath = findConfigFile(reg.path);
+    }
     if (!configPath) continue;
 
     let config: OrchestratorConfig;

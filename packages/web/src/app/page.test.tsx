@@ -2,10 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import Home from "@/app/page";
 
-const redirect = vi.fn();
+const { redirect } = vi.hoisted(() => ({
+  redirect: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   redirect,
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+  usePathname: () => "/",
 }));
 
 vi.mock("@/components/PortfolioPage", () => ({

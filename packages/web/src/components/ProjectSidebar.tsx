@@ -7,6 +7,7 @@ import type { ProjectInfo } from "@/lib/project-name";
 import { getAttentionLevel, type DashboardSession, type AttentionLevel } from "@/lib/types";
 import { isOrchestratorSession } from "@composio/ao-core/types";
 import { getSessionTitle } from "@/lib/format";
+import { getProjectSessionHref } from "@/lib/project-utils";
 
 interface ProjectSidebarProps {
   projects: ProjectInfo[];
@@ -360,7 +361,7 @@ function ProjectSidebarInner({
                           {sessionToneLabel[level]}
                         </span>
                         <a
-                          href={`/sessions/${encodeURIComponent(session.id)}`}
+                          href={getProjectSessionHref(project.id, session.id)}
                           onClick={(e) => e.stopPropagation()}
                           className="project-sidebar__session-id shrink-0 font-mono text-[9px] hover:underline"
                           title={session.id}

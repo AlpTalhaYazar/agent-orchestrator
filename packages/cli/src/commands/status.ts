@@ -12,6 +12,8 @@ import {
   type ProjectConfig,
   isOrchestratorSession,
   loadConfig,
+  loadGlobalConfig,
+  isProjectShadowStale,
 } from "@composio/ao-core";
 import { git, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import {
@@ -284,6 +286,9 @@ export function registerStatus(program: Command): void {
         return;
       }
 
+      // Load global config once for staleness checks (best-effort)
+      const globalConfig = loadGlobalConfig();
+
       if (opts.project && !config.projects[opts.project]) {
         console.error(chalk.red(`Unknown project: ${opts.project}`));
         process.exit(1);
@@ -327,6 +332,14 @@ export function registerStatus(program: Command): void {
 
         if (!opts.json) {
           console.log(header(projectConfig.name || projectId));
+          // Show staleness warning if local config was changed since last ao start
+          if (globalConfig && isProjectShadowStale(projectId, globalConfig)) {
+            console.log(
+              chalk.yellow(
+                `  ⚠ local config changed since last \`ao start\` — shadow may be stale. Run \`ao start\` to sync.`,
+              ),
+            );
+          }
         }
 
         if (projectSessions.length === 0) {

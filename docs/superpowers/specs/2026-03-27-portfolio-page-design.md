@@ -2,54 +2,85 @@
 
 ## Overview
 
-The portfolio page is the home surface (`/`) of Agent Orchestrator. It shows all registered projects with health indicators and provides onboarding actions (clone, scaffold, add local project). It renders inside `DashboardShell` with the `UnifiedSidebar` as a persistent left rail on desktop and a drawer on mobile.
+The portfolio page is the home surface at `/` for Agent Orchestrator.
 
-**Who it's for:** Developers managing multiple AI-assisted projects who need a bird's-eye view across their fleet before drilling into a specific project's dashboard.
+It is the default landing experience for users with one project or many projects. It renders inside `DashboardShell`, with `UnifiedSidebar` as the persistent left rail on desktop and an off-canvas drawer on mobile.
+
+The page has two jobs:
+
+1. Give the user a calm portfolio-level entry point.
+2. Let the user immediately do one of three things:
+   - open a project
+   - clone a repository
+   - quick-start a new project
+
+This is not a second dashboard. It is the home surface for the product.
+
+## Product stance
+
+### Portfolio-first for everyone
+
+All users, including users with exactly one project, land on the same home surface at `/`.
+
+- A one-project user still sees:
+  - the left sidebar
+  - their single workspace in the sidebar
+  - the same main portfolio/home page content
+- `Open project` simply takes them into their only project.
+- The footer/count copy should still make sense for one project, for example `1/1 workspaces available`.
+
+This avoids branching home behavior by project count and keeps the product model consistent.
 
 ## Architecture
 
 ### Routing
 
-- **Route:** `/` — the home page. Currently renders `Dashboard` directly; this spec changes it to render `DashboardShell > PortfolioPage`.
-- **Project route:** `/projects/[id]` — already exists. Modified to wrap `Dashboard` in `DashboardShell` so the sidebar persists.
-- **Server component:** `app/page.tsx` loads portfolio data, renders `DashboardShell > PortfolioPage`
-- **Client component:** `<PortfolioPage>` receives project summaries as props
-- **No SSE/real-time:** Server-rendered snapshot. Refresh by navigating.
+- **Home route:** `/`
+  - Renders `DashboardShell > PortfolioPage`
+- **Project route:** `/projects/[id]`
+  - Renders `DashboardShell > Dashboard`
+- **Legacy portfolio route:** `/portfolio`
+  - Redirects to `/` if retained for compatibility
 
-### Layout shell
+There is no `/?project=<id>` navigation model in the target design.
 
-`DashboardShell` + `UnifiedSidebar` is the shared layout shell for the entire app. Both the portfolio home and per-project dashboards render inside it. There is no secondary shell — `ProjectSidebar` and `MobileBottomNav` from main are replaced by this architecture.
+### Shared shell
 
+All top-level web surfaces share the same shell:
+
+```text
+DashboardShell
+├── UnifiedSidebar
+└── Main content
+    ├── PortfolioPage at /
+    └── Dashboard at /projects/[id]
 ```
-┌──────────────────────────────────────────────┐
-│ DashboardShell                               │
-│ ┌────────┬───────────────────────────────┐   │
-│ │Unified │                               │   │
-│ │Sidebar │  children (PortfolioPage      │   │
-│ │        │           or Dashboard)       │   │
-│ │        │                               │   │
-│ └────────┴───────────────────────────────┘   │
-└──────────────────────────────────────────────┘
-```
 
-- **Desktop:** `UnifiedSidebar` (228px) is always visible as a persistent left rail. It provides project switching, filters, and workspace actions.
-- **Mobile (≤767px):** `UnifiedSidebar` becomes an off-canvas drawer triggered by a hamburger button. The main content is full-width.
+`DashboardShell` is responsible for:
+
+- rendering `UnifiedSidebar`
+- mobile drawer behavior
+- shared modal plumbing for:
+  - add local project
+  - clone from URL
+  - quick start
 
 ### Data loading
 
-New file: `lib/portfolio-page-data.ts` — a parallel to the existing `dashboard-page-data.ts`, not a replacement. The dashboard helper loads sessions for a single project; the portfolio helper aggregates project-level summaries across all projects. Same pattern (React `cache()`, `getServices()` pipeline), different shape.
+Portfolio/home data should be loaded on the server and passed into `PortfolioPage`.
 
-Leverages the existing `portfolio-services.ts` cache layer (which already handles portfolio discovery, session listing, and background refresh):
+Use the existing portfolio services layer:
 
-1. `getPortfolioServices()` — cached project list from portfolio registry + config
-2. `getCachedPortfolioSessions()` — all sessions across projects (async, cached with 10s TTL)
-3. Group sessions by project, compute per-project aggregates via `getAttentionLevel()`
-4. Return `PortfolioPageData`
+1. `getPortfolioServices()` for the project list
+2. `getCachedPortfolioSessions()` for session snapshots
+3. aggregate per-project counts using `getAttentionLevel()`
+
+If useful, extract this logic into `lib/portfolio-page-data.ts`. That extraction is a cleanup refactor, not a required architectural invention.
 
 ```typescript
 interface PortfolioPageData {
   projects: PortfolioProjectSummary[];
-  defaultLocation: string; // for clone/scaffold modals
+  defaultLocation: string;
 }
 
 interface PortfolioProjectSummary {
@@ -63,163 +94,244 @@ interface PortfolioProjectSummary {
 }
 ```
 
-`PortfolioProjectSummary` is added to `lib/types.ts`.
+`PortfolioProjectSummary` lives in `lib/types.ts`.
 
-## Page layout
+## UX model
 
-### Desktop (>767px)
+### Desktop
 
-- Renders inside `DashboardShell` — `UnifiedSidebar` on the left, portfolio content on the right
-- Content area: padded within the main panel (`px-6 py-10`), max-width 760px
-- Header section: "Portfolio" title (IBM Plex Sans 700, 17px) + "N workspaces" subtitle
-- Project cards in a responsive grid: `grid-cols-3` on wide panels, `grid-cols-2` on narrower
-- Action cards ("Clone from URL", "Quick start", "Add local project") in the same grid, visually distinct
-- Design system tokens throughout — see Styling section
+- `UnifiedSidebar` remains visible on the left
+- `PortfolioPage` renders in the main content region
+- the portfolio content is visually calm and intentionally sparse
+- the page should feel like a launcher/home, not a dense operations board
 
-### Mobile (≤767px)
+### Mobile
 
-- `UnifiedSidebar` hidden (available as drawer via hamburger)
-- Single column, full-width with horizontal padding
-- Header: "Portfolio" title + count, hamburger button (top left), "+" icon button (top right)
-- Project cards stacked vertically, 8px gap
-- Action cards in 2-column grid below project cards
-- Safe area padding at bottom: `env(safe-area-inset-bottom)`
+- sidebar becomes a drawer
+- portfolio content becomes full-width
+- action cards remain easily tappable
+- modal flows should feel native on narrow screens
 
-### Empty state (zero projects)
+### Empty state
 
-- Header: "Get started"
-- The 3 action cards are the main content — larger, centered, with descriptions
-- No project cards
+If there are zero projects:
 
-## Component anatomy
+- the main content becomes a getting-started state
+- onboarding actions are still visible and prominent
+- there are no project cards or project summaries
 
-### Project card
+## Portfolio page layout
 
-```
-┌─────────────────────────────────────────┐
-│ [28px swatch]  project-name             │
-│                N active sessions        │
-│                                         │
-│ [2 working] [1 respond] [1 ready]       │
-└─────────────────────────────────────────┘
-```
+The current design direction is launcher-first, not grid-of-project-cards first.
 
-- 28px colored swatch, `border-radius: var(--radius-sm)` (4px)
-- Project name: 13px, font-weight 600, `var(--color-text-primary)`
-- Subtitle: "N active sessions", `var(--color-text-tertiary)`
-- Status pills: colored per DESIGN.md status tokens, 10px font, pill backgrounds using `--color-tint-*`
-- Degraded projects: muted swatch (40% opacity), "degraded" label in `var(--color-accent-red)`
-- Card: `border-radius: 0` per DESIGN.md utilitarian stance, `border: 1px solid var(--color-border-subtle)`, `background: var(--card-bg)`
-- Click/tap navigates to `/projects/<id>`
-- Min height: 64px (touch target compliance)
-- Swatch colors: defined as CSS custom properties `--swatch-1` through `--swatch-6` in `globals.css`, cycling per project index. This keeps the palette in the design system rather than hardcoded in components.
+### Required content
 
-### Action card
+- brand/title lockup
+- `Open project`
+- `Clone from URL`
+- `Quick start`
+- minimal supporting count/status copy
 
-```
-┌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┐
-╎         [icon]                         ╎
-╎         Clone from URL                 ╎
-└╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┘
-```
+### Not required on the home surface
 
-- SVG icon (16px) + label (12px)
-- Dashed border: `1px dashed var(--color-border-default)`
-- Background: `var(--color-accent-subtle)`
-- Min height: 56px
-- Click opens onboarding modal
+- cross-project action queue
+- project summary card grid
+- dashboard-style filters
+- dense health overviews
 
-### Three onboarding actions
+Those may exist later, but they are not required for the primary home experience.
 
-| Action | Description | Modal content |
-|--------|------------|---------------|
-| Clone from URL | Clone a git repo | URL input + destination path picker |
-| Quick start | Scaffold a new project | Template selection + project name + path |
-| Add local project | Register an existing directory | Path input/picker |
+## Sidebar design
 
-## Modals
+`UnifiedSidebar` is part of the portfolio experience, not a separate concern.
 
-Reuse existing WIP modal components (`CloneFromUrlModal`, `QuickStartModal`, `AddProjectModal`).
+### Desktop sidebar structure
 
-- **Desktop:** Centered modal via `Modal.tsx` with backdrop, `border-radius: var(--radius-lg)`, `var(--color-bg-elevated)` background
-- **Mobile:** Same `Modal.tsx` component renders as a full-width bottom-anchored sheet with drag handle. `Modal.tsx` must be updated to accept an `isMobile` prop (or use `useMediaQuery` internally) and switch between centered overlay and bottom-sheet presentation. This is a concrete implementation change — see modified files table.
+- top row:
+  - `Activity` link
+- section header:
+  - `Workspaces`
+  - filter icon
+  - add-repository icon
+- filter card:
+  - `Group by`
+  - second contextual selector
+- workspace list
+- bottom utility icons
 
-On successful project creation, navigate to `/projects/<newId>`.
+### Sidebar filters
 
-## Navigation integration
+The sidebar owns the workspace filtering UI.
 
-### UnifiedSidebar
+#### Group by
 
-Already built with design-system polish. The sidebar provides:
+Allowed values:
 
-- "Activity" link at the top (home/portfolio — highlights when on `/`)
-- "Workspaces" section with project list, colored swatches, and inline filters
-- Workspace items link to `/projects/<id>`
-- Add menu (folder+ icon) with "Open project", "Clone from URL", "Quick start"
-- Footer with help and settings links
+- `Repo`
+- `Status`
 
-**Mobile behavior:** Off-canvas drawer (280px max-width) triggered by hamburger button. Backdrop overlay with `backdrop-blur`. Focus trap and Escape-to-close.
+#### Secondary filter
 
-### DashboardShell
+If grouped by `Repo`:
 
-Wraps both the portfolio page and per-project dashboards. Provides:
+- `All repos`
+- individual repo selection from registered projects
 
-- `UnifiedSidebar` with project list and mobile drawer
-- Mobile hamburger button (fixed, top-right on small screens)
-- Wires modal state (add project, clone, quick start) to sidebar actions
+If grouped by `Status`:
+
+- `All statuses`
+- `Active`
+- `Review`
+- `Respond`
+- `Quiet`
+
+#### Interaction requirements
+
+- custom dropdown/popover UI, not default browser select styling
+- clicking outside the active dropdown closes it
+- only one dropdown is open at a time
+- closed state must fit inside the sidebar width without overflow
+- open popovers may be wider than the closed trigger if needed
+
+### Add repository menu
+
+The add-repository control in the sidebar opens a menu with:
+
+- `Open project`
+- `Clone from URL`
+- `Quick start`
+
+These actions should reuse the same modal flows used by the home page.
+
+## Onboarding flows
+
+### Open project
+
+Registers an existing local git repository into the portfolio.
+
+- uses `AddProjectModal`
+- validates local path
+- validates git repository
+- registers project
+
+### Clone from URL
+
+Clones a git repository locally, registers it, then navigates to `/projects/<id>`.
+
+- modal fields:
+  - `Git URL`
+  - `Clone location`
+- action:
+  - run `git clone`
+  - register the resulting repo
+  - redirect to `/projects/<id>`
+
+### Quick start
+
+Creates a local project, initializes git, registers it, then navigates to `/projects/<id>`.
+
+- modal fields:
+  - `Name`
+  - `Location`
+  - `Template`
+- initial supported templates:
+  - `Empty`
+  - `Next.js`
+
+The initial `Next.js` quick start may scaffold the files without automatically running install. That is acceptable for the first version as long as the behavior is explicit.
+
+## Modal behavior
+
+Use the shared modal system.
+
+### Required behavior
+
+- desktop:
+  - centered modal surface
+- mobile:
+  - bottom-sheet style presentation or equivalent responsive modal treatment
+- shared flows should work from:
+  - home page action cards
+  - sidebar add-repository menu
+
+If `Modal.tsx` must be upgraded to support responsive desktop vs mobile presentation, that is an explicit implementation task, not an implicit assumption.
 
 ## Styling
 
-All styling follows DESIGN.md:
+All styling should use the existing design system and tokens.
 
-- **Typography:** IBM Plex Sans for text, IBM Plex Mono (10px uppercase, +0.06em tracking) for section labels
-- **Colors:** CSS variable tokens throughout — `var(--color-bg-*)`, `var(--color-text-*)`, `var(--color-border-*)`, `var(--color-accent-*)`
-- **Swatches:** Project swatch palette defined as `--swatch-1` through `--swatch-6` custom properties in `globals.css`, with both light and dark mode values. Components reference `var(--swatch-N)`.
-- **Dark mode:** Automatic via CSS variables.
-- **Border radius:** `0` for project cards (utilitarian), `var(--radius-sm)` for pills/swatches, `var(--radius-lg)` for modals
-- **Spacing:** 4px base unit, comfortable density
-- **Motion:** `var(--transition-quick)` (0.1s) on hover states. `prefers-reduced-motion` respected.
-- **Card surfaces:** `var(--card-bg)` with `var(--card-inset)` in dark mode for depth
+- IBM Plex Sans for primary text
+- IBM Plex Mono for small labels where appropriate
+- CSS variable tokens for backgrounds, text, borders, accents
+- project swatches defined as CSS custom properties in `globals.css`
+- no hardcoded component-level hex colors for recurring design system values
 
-## Files to create/modify
+### Design character
 
-### New files
+- calm
+- minimal
+- intentional
+- portfolio-first
+- not a generic SaaS admin board
 
-| File | Purpose |
-|------|---------|
-| `components/PortfolioPage.tsx` | Client component — portfolio page UI |
-| `components/PortfolioProjectCard.tsx` | Project card component |
-| `components/PortfolioActionCard.tsx` | Action card component |
-| `lib/portfolio-page-data.ts` | Server data aggregation — parallel to `dashboard-page-data.ts`, uses `portfolio-services.ts` cache |
-| `app/api/projects/register/route.ts` | POST — register a local project directory |
-| `app/api/projects/clone/route.ts` | POST — clone a git repo and register it |
-| `app/api/projects/quick-start/route.ts` | POST — scaffold a new project from template |
+## Implementation plan
 
-### Modified files
+### Already exists and should be reused
 
-| File | Change |
-|------|--------|
-| `app/page.tsx` | Render `DashboardShell > PortfolioPage` instead of direct `Dashboard` |
-| `app/projects/[projectId]/page.tsx` | Wrap existing `Dashboard` in `DashboardShell` so sidebar persists |
-| `lib/types.ts` | Add `PortfolioProjectSummary` type |
-| `app/globals.css` | Portfolio page styles, `--swatch-*` tokens, mobile breakpoints |
-| `components/DashboardShell.tsx` | Wire to portfolio data, pass projects to UnifiedSidebar |
-| `components/UnifiedSidebar.tsx` | Minor: active state highlighting when on `/` |
-| `components/Modal.tsx` | Add responsive split: centered overlay on desktop, bottom-anchored sheet with drag handle on mobile (via `useMediaQuery`) |
-| `components/Dashboard.tsx` | Remove `ProjectSidebar` usage — sidebar is now provided by `DashboardShell` parent |
+- `components/DashboardShell.tsx`
+- `components/UnifiedSidebar.tsx`
+- `components/PortfolioPage.tsx`
+- `components/CloneFromUrlModal.tsx`
+- `components/QuickStartModal.tsx`
+- `components/AddProjectModal.tsx`
+- `components/Modal.tsx`
+- `app/page.tsx`
+- `app/projects/[id]/page.tsx`
+- `app/api/projects/clone/route.ts`
+- `app/api/projects/quick-start/route.ts`
+- portfolio services and aggregation helpers
 
-### Reused WIP files (cleanup needed)
+### Modify
 
-| File | Status |
-|------|--------|
-| `components/CloneFromUrlModal.tsx` | Exists as untracked WIP — clean up |
-| `components/QuickStartModal.tsx` | Same |
-| `components/AddProjectModal.tsx` | Same |
-| `hooks/useModal.ts` | Modal state hook — ready to use |
+- `app/page.tsx`
+  - ensure home renders the final portfolio page data and shell
+- `components/PortfolioPage.tsx`
+  - keep this as the launcher-style home surface
+- `components/UnifiedSidebar.tsx`
+  - finalize sidebar layout, filters, add menu, and interactions
+- `components/DashboardShell.tsx`
+  - keep shared modal wiring for sidebar actions
+- `components/Modal.tsx`
+  - if needed, add proper responsive mobile presentation
+- `app/globals.css`
+  - token and style support for portfolio/sidebar polish
+
+### Optional refactor
+
+- `lib/portfolio-page-data.ts`
+  - extract server aggregation logic from `app/page.tsx` if it improves clarity
+
+### Compatibility route
+
+- `app/portfolio/page.tsx`
+  - optional redirect to `/`
 
 ## Out of scope
 
-- Real-time SSE updates on portfolio page (can add later)
-- Cross-project attention triage / action queue
-- Project reordering, pinning, or grouping
-- Settings page for portfolio preferences
+- real-time SSE updates on the home surface
+- cross-project action queue on the home surface
+- project pinning or manual reordering
+- portfolio preferences UI
+- major redesign of the per-project dashboard itself
+
+## Definition of done
+
+The portfolio/home work is done when:
+
+1. `/` is the portfolio-first home surface
+2. `/projects/[id]` remains the per-project dashboard route
+3. the sidebar is the persistent workspace control surface on desktop
+4. `Open project`, `Clone from URL`, and `Quick start` work from the home surface
+5. the same project actions also work from the sidebar add menu
+6. single-project users still get the same coherent home experience
+7. the final UI feels calm and intentional rather than dashboard-heavy
