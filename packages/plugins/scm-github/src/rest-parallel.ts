@@ -702,7 +702,7 @@ export async function enrichSessionsPRBatch(
   const prsNeedingRefresh: PRInfo[] = [];
   const cacheHits: PREnrichmentData[] = [];
 
-  for (const [repoKey, repoPRs] of repoGroups.entries()) {
+  for (const [repoKey, repoPRs] of Array.from(repoGroups.entries())) {
     const [owner, repo] = repoKey.split("/");
     const prListChanged = await checkPRListETag(owner, repo, etagCache);
     if (prListChanged) {
