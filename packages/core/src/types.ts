@@ -40,7 +40,8 @@ export type SessionStatus =
   | "killed"
   | "idle"
   | "done"
-  | "terminated";
+  | "terminated"
+  | "escalation";
 
 /** Activity state as detected by the agent plugin */
 export type ActivityState =
@@ -90,6 +91,7 @@ export const SESSION_STATUS = {
   KILLED: "killed" as const,
   DONE: "done" as const,
   TERMINATED: "terminated" as const,
+  ESCALATION: "escalation" as const,
 } satisfies Record<string, SessionStatus>;
 
 /** Statuses that indicate the session is in a terminal (dead) state. */
@@ -793,6 +795,7 @@ export type EventType =
   | "session.stuck"
   | "session.needs_input"
   | "session.errored"
+  | "session.escalation"
   // PR lifecycle
   | "pr.created"
   | "pr.updated"
@@ -881,10 +884,21 @@ export interface ReactionResult {
 export interface OrchestratorConfig {
   /**
    * Path to the config file (set automatically during load).
-   * Used for hash-based directory structure.
-   * All paths are auto-derived from this location.
+   * Backwards compat — points to globalConfigPath.
    */
   configPath: string;
+
+  /**
+   * Path to the global config file (~/.agent-orchestrator/config.yaml).
+   * Always set. Contains project registry + shadow copies.
+   */
+  globalConfigPath: string;
+
+  /**
+   * Path to the local config file (in-project agent-orchestrator.yaml).
+   * Null when running in remote/global-only mode.
+   */
+  localConfigPath: string | null;
 
   /** Web dashboard port (defaults to 3000) */
   port?: number;
@@ -1009,6 +1023,100 @@ export interface ProjectConfig {
     /** Require human approval before executing decomposed plans (default: true) */
     requireApproval: boolean;
   };
+}
+
+// =============================================================================
+// OPTION C — Project Identity / Behavior split
+// =============================================================================
+
+/**
+ * Identity fields that live in the global config registry.
+ * These identify WHERE a project is and HOW to find it.
+ */
+export interface ProjectIdentity {
+  /** GitHub repo in "owner/repo" format */
+  repo: string;
+  /** Local path to the repo */
+  path: string;
+  /** Default branch (main, master, etc.) */
+  defaultBranch: string;
+}
+
+/**
+ * Behavior fields that live in local config (or shadow).
+ * These define HOW to run agents for the project.
+ */
+export interface ProjectBehavior {
+  /** Display name */
+  name?: string;
+  /** Session name prefix */
+  sessionPrefix?: string;
+  /** Override default runtime */
+  runtime?: string;
+  /** Override default agent */
+  agent?: string;
+  /** Override default workspace */
+  workspace?: string;
+  /** Issue tracker configuration */
+  tracker?: TrackerConfig;
+  /** SCM configuration */
+  scm?: SCMConfig;
+  /** Files/dirs to symlink into workspaces */
+  symlinks?: string[];
+  /** Commands to run after workspace creation */
+  postCreate?: string[];
+  /** Agent-specific configuration */
+  agentConfig?: AgentSpecificConfig;
+  orchestrator?: RoleAgentConfig;
+  worker?: RoleAgentConfig;
+  /** Per-project reaction overrides */
+  reactions?: Record<string, Partial<ReactionConfig>>;
+  /** Inline rules/instructions passed to every agent prompt */
+  agentRules?: string;
+  /** Path to a file containing agent rules */
+  agentRulesFile?: string;
+  /** Rules for the orchestrator agent */
+  orchestratorRules?: string;
+  orchestratorSessionStrategy?:
+    | "reuse"
+    | "delete"
+    | "ignore"
+    | "delete-new"
+    | "ignore-new"
+    | "kill-previous";
+  opencodeIssueSessionStrategy?: "reuse" | "delete" | "ignore";
+  /** Task decomposition configuration */
+  decomposer?: {
+    enabled: boolean;
+    maxDepth: number;
+    model: string;
+    requireApproval: boolean;
+  };
+}
+
+/**
+ * Global config schema for ~/.agent-orchestrator/config.yaml.
+ * Contains the project registry and shadow copies of behavior.
+ */
+export interface GlobalConfig {
+  /** Default plugin selections */
+  defaults?: DefaultPlugins;
+  /** Project registry: identity + shadow behavior */
+  projects: Record<
+    string,
+    ProjectIdentity & {
+      /** Shadow copy of local behavior (synced on ao start) */
+      shadow?: ProjectBehavior;
+    }
+  >;
+  /** Notification channel configs */
+  notifiers?: Record<string, NotifierConfig>;
+  /** Notification routing by priority */
+  notificationRouting?: Record<string, string[]>;
+  /** Default reaction configs */
+  reactions?: Record<string, ReactionConfig>;
+  /** Web dashboard port */
+  port?: number;
 }
 
 export interface TrackerConfig {

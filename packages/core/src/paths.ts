@@ -11,16 +11,37 @@
 import { createHash } from "node:crypto";
 import { dirname, basename, join } from "node:path";
 import { homedir } from "node:os";
-import { realpathSync, existsSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import {
+  realpathSync,
+  existsSync,
+  writeFileSync,
+  readFileSync,
+  mkdirSync,
+  renameSync,
+} from "node:fs";
 
 /**
  * Generate a 12-character hash from a config directory path.
  * Always resolves symlinks before hashing to ensure consistency.
+ *
+ * @deprecated Use generateProjectHash(projectPath) for Option C.
+ * Kept for backwards compat and migration.
  */
 export function generateConfigHash(configPath: string): string {
   const resolved = realpathSync(configPath);
   const configDir = dirname(resolved);
   const hash = createHash("sha256").update(configDir).digest("hex");
+  return hash.slice(0, 12);
+}
+
+/**
+ * Generate a 12-character hash from a project path.
+ * This is stable regardless of which config file loaded the project,
+ * making it safe for Option C's hybrid local + global config model.
+ */
+export function generateProjectHash(projectPath: string): string {
+  const resolved = realpathSync(projectPath);
+  const hash = createHash("sha256").update(resolved).digest("hex");
   return hash.slice(0, 12);
 }
 
@@ -36,9 +57,21 @@ export function generateProjectId(projectPath: string): string {
  * Generate instance ID combining hash and project ID.
  * Format: {hash}-{projectId}
  * Example: "a3b4c5d6e7f8-integrator"
+ *
+ * @deprecated Use generateInstanceIdFromProject(projectPath) for Option C.
  */
 export function generateInstanceId(configPath: string, projectPath: string): string {
   const hash = generateConfigHash(configPath);
+  const projectId = generateProjectId(projectPath);
+  return `${hash}-${projectId}`;
+}
+
+/**
+ * Generate instance ID from project path only (Option C).
+ * Format: {projectHash}-{projectId}
+ */
+export function generateInstanceIdFromProject(projectPath: string): string {
+  const hash = generateProjectHash(projectPath);
   const projectId = generateProjectId(projectPath);
   return `${hash}-${projectId}`;
 }
@@ -80,9 +113,18 @@ export function generateSessionPrefix(projectId: string): string {
 /**
  * Get the project base directory for a given config and project.
  * Format: ~/.agent-orchestrator/{hash}-{projectId}
+ *
+ * Accepts either (configPath, projectPath) for backwards compat
+ * or just (projectPath) for Option C mode.
  */
-export function getProjectBaseDir(configPath: string, projectPath: string): string {
-  const instanceId = generateInstanceId(configPath, projectPath);
+export function getProjectBaseDir(configPathOrProjectPath: string, projectPath?: string): string {
+  if (projectPath !== undefined) {
+    // Legacy mode: (configPath, projectPath)
+    const instanceId = generateInstanceId(configPathOrProjectPath, projectPath);
+    return join(expandHome("~/.agent-orchestrator"), instanceId);
+  }
+  // Option C mode: (projectPath)
+  const instanceId = generateInstanceIdFromProject(configPathOrProjectPath);
   return join(expandHome("~/.agent-orchestrator"), instanceId);
 }
 
@@ -98,41 +140,65 @@ export function getObservabilityBaseDir(configPath: string): string {
 /**
  * Get the sessions directory for a project.
  * Format: ~/.agent-orchestrator/{hash}-{projectId}/sessions
+ *
+ * Accepts either (configPath, projectPath) for backwards compat
+ * or just (projectPath) for Option C mode.
  */
-export function getSessionsDir(configPath: string, projectPath: string): string {
-  return join(getProjectBaseDir(configPath, projectPath), "sessions");
+export function getSessionsDir(configPathOrProjectPath: string, projectPath?: string): string {
+  if (projectPath !== undefined) {
+    return join(getProjectBaseDir(configPathOrProjectPath, projectPath), "sessions");
+  }
+  return join(getProjectBaseDir(configPathOrProjectPath), "sessions");
 }
 
 /**
  * Get the worktrees directory for a project.
  * Format: ~/.agent-orchestrator/{hash}-{projectId}/worktrees
  */
-export function getWorktreesDir(configPath: string, projectPath: string): string {
-  return join(getProjectBaseDir(configPath, projectPath), "worktrees");
+export function getWorktreesDir(configPathOrProjectPath: string, projectPath?: string): string {
+  if (projectPath !== undefined) {
+    return join(getProjectBaseDir(configPathOrProjectPath, projectPath), "worktrees");
+  }
+  return join(getProjectBaseDir(configPathOrProjectPath), "worktrees");
 }
 
 /**
  * Get the feedback reports directory for a project.
  * Format: ~/.agent-orchestrator/{hash}-{projectId}/feedback-reports
  */
-export function getFeedbackReportsDir(configPath: string, projectPath: string): string {
-  return join(getProjectBaseDir(configPath, projectPath), "feedback-reports");
+export function getFeedbackReportsDir(
+  configPathOrProjectPath: string,
+  projectPath?: string,
+): string {
+  if (projectPath !== undefined) {
+    return join(getProjectBaseDir(configPathOrProjectPath, projectPath), "feedback-reports");
+  }
+  return join(getProjectBaseDir(configPathOrProjectPath), "feedback-reports");
 }
 
 /**
  * Get the archive directory for a project.
  * Format: ~/.agent-orchestrator/{hash}-{projectId}/archive
  */
-export function getArchiveDir(configPath: string, projectPath: string): string {
-  return join(getSessionsDir(configPath, projectPath), "archive");
+export function getArchiveDir(configPathOrProjectPath: string, projectPath?: string): string {
+  if (projectPath !== undefined) {
+    return join(getSessionsDir(configPathOrProjectPath, projectPath), "archive");
+  }
+  return join(getSessionsDir(configPathOrProjectPath), "archive");
 }
 
 /**
  * Get the .origin file path for a project.
- * This file stores the config path for collision detection.
+ * This file stores the project path for collision detection.
  */
-export function getOriginFilePath(configPath: string, projectPath: string): string {
-  return join(getProjectBaseDir(configPath, projectPath), ".origin");
+export function getOriginFilePath(
+  configPathOrProjectPath: string,
+  projectPath?: string,
+): string {
+  if (projectPath !== undefined) {
+    return join(getProjectBaseDir(configPathOrProjectPath, projectPath), ".origin");
+  }
+  return join(getProjectBaseDir(configPathOrProjectPath), ".origin");
 }
 
 /**
@@ -147,10 +213,25 @@ export function generateSessionName(prefix: string, num: number): string {
 /**
  * Generate tmux session name (globally unique).
  * Format: {hash}-{prefix}-{num}
- * Example: "a3b4c5d6e7f8-int-1"
+ *
+ * Accepts either (configPath, prefix, num) for backwards compat
+ * or uses project hash when configPath is actually a projectPath.
  */
 export function generateTmuxName(configPath: string, prefix: string, num: number): string {
   const hash = generateConfigHash(configPath);
+  return `${hash}-${prefix}-${num}`;
+}
+
+/**
+ * Generate tmux session name using project hash (Option C).
+ * Format: {projectHash}-{prefix}-{num}
+ */
+export function generateTmuxNameFromProject(
+  projectPath: string,
+  prefix: string,
+  num: number,
+): string {
+  const hash = generateProjectHash(projectPath);
   return `${hash}-${prefix}-${num}`;
 }
 
@@ -185,7 +266,10 @@ export function expandHome(filepath: string): string {
 
 /**
  * Validate and store the .origin file for a project.
- * Throws if a hash collision is detected (different config, same hash).
+ * Throws if a hash collision is detected (different project path, same hash).
+ *
+ * Option C: stores resolved projectPath (not configPath) in .origin.
+ * Legacy (configPath, projectPath) signature still supported.
  */
 export function validateAndStoreOrigin(configPath: string, projectPath: string): void {
   const originPath = getOriginFilePath(configPath, projectPath);
@@ -208,4 +292,89 @@ export function validateAndStoreOrigin(configPath: string, projectPath: string):
     mkdirSync(baseDir, { recursive: true });
     writeFileSync(originPath, resolvedConfigPath, "utf-8");
   }
+}
+
+// =============================================================================
+// MIGRATION — Old config-hash dirs → new project-hash dirs
+// =============================================================================
+
+export interface MigrationResult {
+  projectId: string;
+  oldDir: string;
+  newDir: string;
+  renamed: boolean;
+  error?: string;
+}
+
+/**
+ * Migrate session directories from old config-hash-based naming to
+ * new project-hash-based naming (Option C).
+ *
+ * Scans ~/.agent-orchestrator/ for {oldHash}-{projectId} directories,
+ * computes the new hash from project.path, and renames.
+ * Updates .origin files to store the project path.
+ *
+ * Safe: skips if new dir already exists, logs all actions.
+ */
+export function migrateSessionDirs(
+  oldConfigPath: string,
+  projects: Record<string, { path: string }>,
+): MigrationResult[] {
+  const results: MigrationResult[] = [];
+  const aoBase = expandHome("~/.agent-orchestrator");
+
+  if (!existsSync(aoBase)) return results;
+
+  const oldHash = generateConfigHash(oldConfigPath);
+
+  for (const [projectKey, project] of Object.entries(projects)) {
+    const projectId = generateProjectId(project.path);
+    const oldInstanceId = `${oldHash}-${projectId}`;
+    const oldDir = join(aoBase, oldInstanceId);
+
+    if (!existsSync(oldDir)) {
+      continue; // Nothing to migrate for this project
+    }
+
+    const newInstanceId = generateInstanceIdFromProject(project.path);
+    const newDir = join(aoBase, newInstanceId);
+
+    if (oldDir === newDir) {
+      // Hash happens to be the same — no migration needed
+      results.push({ projectId: projectKey, oldDir, newDir, renamed: false });
+      continue;
+    }
+
+    if (existsSync(newDir)) {
+      results.push({
+        projectId: projectKey,
+        oldDir,
+        newDir,
+        renamed: false,
+        error: `Target directory already exists: ${newDir}`,
+      });
+      continue;
+    }
+
+    try {
+      renameSync(oldDir, newDir);
+
+      // Update .origin file to store project path instead of config path
+      const originPath = join(newDir, ".origin");
+      const resolvedProjectPath = realpathSync(project.path);
+      writeFileSync(originPath, resolvedProjectPath, "utf-8");
+
+      results.push({ projectId: projectKey, oldDir, newDir, renamed: true });
+    } catch (err) {
+      results.push({
+        projectId: projectKey,
+        oldDir,
+        newDir,
+        renamed: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return results;
 }

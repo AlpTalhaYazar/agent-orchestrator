@@ -21,6 +21,8 @@ beforeEach(() => {
 
   config = {
     configPath,
+    globalConfigPath: configPath,
+    localConfigPath: null,
     port: 3000,
     readyThresholdMs: 300_000,
     defaults: {

@@ -4,6 +4,8 @@ import type { OrchestratorConfig } from "../types.js";
 
 const config: OrchestratorConfig = {
   configPath: "/tmp/agent-orchestrator.yaml",
+  globalConfigPath: "/tmp/agent-orchestrator.yaml",
+  localConfigPath: null,
   port: 3000,
   defaults: {
     runtime: "tmux",

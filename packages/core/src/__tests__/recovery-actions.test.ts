@@ -18,6 +18,8 @@ import type { OrchestratorConfig, PluginRegistry } from "../types.js";
 function makeConfig(rootDir: string): OrchestratorConfig {
   return {
     configPath: join(rootDir, "agent-orchestrator.yaml"),
+    globalConfigPath: join(rootDir, "agent-orchestrator.yaml"),
+    localConfigPath: null,
     port: 3000,
     readyThresholdMs: 300_000,
     defaults: {

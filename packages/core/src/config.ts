@@ -10,13 +10,18 @@
  * Everything else has sensible defaults.
  */
 
-import { readFileSync, existsSync } from "node:fs";
-import { resolve, join, basename } from "node:path";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
+import { resolve, join, basename, dirname } from "node:path";
 import { homedir } from "node:os";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as yamlStringify } from "yaml";
 import { z } from "zod";
-import { ConfigNotFoundError, type OrchestratorConfig } from "./types.js";
-import { generateSessionPrefix } from "./paths.js";
+import {
+  ConfigNotFoundError,
+  type OrchestratorConfig,
+  type GlobalConfig,
+  type ProjectBehavior,
+} from "./types.js";
+import { generateSessionPrefix, migrateSessionDirs, expandHome } from "./paths.js";
 
 function inferScmPlugin(project: {
   repo: string;
@@ -201,14 +206,6 @@ const OrchestratorConfigSchema = z.object({
 // =============================================================================
 // CONFIG LOADING
 // =============================================================================
-
-/** Expand ~ to home directory */
-function expandHome(filepath: string): string {
-  if (filepath.startsWith("~/")) {
-    return join(homedir(), filepath.slice(2));
-  }
-  return filepath;
-}
 
 /** Expand all path fields in the config */
 function expandPaths(config: OrchestratorConfig): OrchestratorConfig {
@@ -474,8 +471,10 @@ export function loadConfig(configPath?: string): OrchestratorConfig {
   const parsed = parseYaml(raw);
   const config = validateConfig(parsed);
 
-  // Set the config path in the config object for hash generation
+  // Set config paths — backwards compat + new Option C fields
   config.configPath = path;
+  config.globalConfigPath = config.globalConfigPath || path;
+  config.localConfigPath = config.localConfigPath || null;
 
   return config;
 }
@@ -495,8 +494,10 @@ export function loadConfigWithPath(configPath?: string): {
   const parsed = parseYaml(raw);
   const config = validateConfig(parsed);
 
-  // Set the config path in the config object for hash generation
+  // Set config paths
   config.configPath = path;
+  config.globalConfigPath = config.globalConfigPath || path;
+  config.localConfigPath = config.localConfigPath || null;
 
   return { config, path };
 }
@@ -521,4 +522,416 @@ export function getDefaultConfig(): OrchestratorConfig {
   return validateConfig({
     projects: {},
   });
+}
+
+// =============================================================================
+// OPTION C — Global + Local Config Loading
+// =============================================================================
+
+const GLOBAL_CONFIG_DIR = "~/.agent-orchestrator";
+const GLOBAL_CONFIG_FILENAME = "config.yaml";
+const LOCK_FILENAME = ".config.lock";
+const LOCK_TIMEOUT_MS = 5_000;
+const LOCK_POLL_MS = 100;
+
+/** Zod schema for the global config file */
+const GlobalConfigSchema = z.object({
+  port: z.number().optional(),
+  defaults: DefaultPluginsSchema.optional(),
+  projects: z
+    .record(
+      z.object({
+        repo: z.string(),
+        path: z.string(),
+        defaultBranch: z.string().default("main"),
+        shadow: z
+          .object({
+            name: z.string().optional(),
+            sessionPrefix: z.string().optional(),
+            runtime: z.string().optional(),
+            agent: z.string().optional(),
+            workspace: z.string().optional(),
+            tracker: TrackerConfigSchema.optional(),
+            scm: SCMConfigSchema.optional(),
+            symlinks: z.array(z.string()).optional(),
+            postCreate: z.array(z.string()).optional(),
+            agentConfig: AgentSpecificConfigSchema.optional(),
+            orchestrator: RoleAgentConfigSchema.optional(),
+            worker: RoleAgentConfigSchema.optional(),
+            reactions: z.record(ReactionConfigSchema.partial()).optional(),
+            agentRules: z.string().optional(),
+            agentRulesFile: z.string().optional(),
+            orchestratorRules: z.string().optional(),
+            orchestratorSessionStrategy: z
+              .enum(["reuse", "delete", "ignore", "delete-new", "ignore-new", "kill-previous"])
+              .optional(),
+            opencodeIssueSessionStrategy: z.enum(["reuse", "delete", "ignore"]).optional(),
+            decomposer: DecomposerConfigSchema.optional(),
+          })
+          .optional(),
+      }),
+    )
+    .default({}),
+  notifiers: z.record(NotifierConfigSchema).default({}),
+  notificationRouting: z.record(z.array(z.string())).optional(),
+  reactions: z.record(ReactionConfigSchema).optional(),
+});
+
+/** Zod schema for local in-project config (behavior only) */
+const LocalConfigSchema = z.object({
+  name: z.string().optional(),
+  sessionPrefix: z.string().optional(),
+  runtime: z.string().optional(),
+  agent: z.string().optional(),
+  workspace: z.string().optional(),
+  tracker: TrackerConfigSchema.optional(),
+  scm: SCMConfigSchema.optional(),
+  symlinks: z.array(z.string()).optional(),
+  postCreate: z.array(z.string()).optional(),
+  agentConfig: AgentSpecificConfigSchema.optional(),
+  orchestrator: RoleAgentConfigSchema.optional(),
+  worker: RoleAgentConfigSchema.optional(),
+  reactions: z.record(ReactionConfigSchema.partial()).optional(),
+  agentRules: z.string().optional(),
+  agentRulesFile: z.string().optional(),
+  orchestratorRules: z.string().optional(),
+  orchestratorSessionStrategy: z
+    .enum(["reuse", "delete", "ignore", "delete-new", "ignore-new", "kill-previous"])
+    .optional(),
+  opencodeIssueSessionStrategy: z.enum(["reuse", "delete", "ignore"]).optional(),
+  decomposer: DecomposerConfigSchema.optional(),
+});
+
+export type LocalConfig = z.infer<typeof LocalConfigSchema>;
+
+/** Get the global config file path */
+export function getGlobalConfigPath(): string {
+  return join(expandHome(GLOBAL_CONFIG_DIR), GLOBAL_CONFIG_FILENAME);
+}
+
+/** Check if a global config file exists */
+export function globalConfigExists(): boolean {
+  return existsSync(getGlobalConfigPath());
+}
+
+/**
+ * Load the global config from ~/.agent-orchestrator/config.yaml.
+ * Returns null if the file doesn't exist.
+ */
+export function loadGlobalConfig(): GlobalConfig | null {
+  const path = getGlobalConfigPath();
+  if (!existsSync(path)) return null;
+
+  const raw = readFileSync(path, "utf-8");
+  const parsed = parseYaml(raw);
+  const validated = GlobalConfigSchema.parse(parsed);
+  return validated as GlobalConfig;
+}
+
+/**
+ * Load a local in-project config file.
+ * Searches for agent-orchestrator.yaml in the project directory.
+ * Returns null if not found.
+ */
+export function loadLocalConfig(projectPath: string): LocalConfig | null {
+  const filenames = ["agent-orchestrator.yaml", "agent-orchestrator.yml"];
+
+  for (const filename of filenames) {
+    const path = resolve(projectPath, filename);
+    if (existsSync(path)) {
+      const raw = readFileSync(path, "utf-8");
+      const parsed = parseYaml(raw);
+      return LocalConfigSchema.parse(parsed);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find the local config file path in a project directory.
+ * Returns null if no config file exists.
+ */
+export function findLocalConfigPath(projectPath: string): string | null {
+  const filenames = ["agent-orchestrator.yaml", "agent-orchestrator.yml"];
+  for (const filename of filenames) {
+    const path = resolve(projectPath, filename);
+    if (existsSync(path)) return path;
+  }
+  return null;
+}
+
+/**
+ * Merge global registry entry + local behavior into a full ProjectConfig.
+ * Local config wins over shadow for all behavior fields.
+ */
+export function mergeConfigs(
+  globalEntry: GlobalConfig["projects"][string],
+  local: LocalConfig | null,
+  projectId: string,
+): Record<string, unknown> {
+  const shadow = globalEntry.shadow ?? {};
+  const behavior = local ?? shadow;
+
+  return {
+    name: behavior.name ?? projectId,
+    repo: globalEntry.repo,
+    path: globalEntry.path,
+    defaultBranch: globalEntry.defaultBranch,
+    sessionPrefix: behavior.sessionPrefix,
+    runtime: behavior.runtime,
+    agent: behavior.agent,
+    workspace: behavior.workspace,
+    tracker: behavior.tracker,
+    scm: behavior.scm,
+    symlinks: behavior.symlinks,
+    postCreate: behavior.postCreate,
+    agentConfig: behavior.agentConfig ?? {},
+    orchestrator: behavior.orchestrator,
+    worker: behavior.worker,
+    reactions: behavior.reactions,
+    agentRules: behavior.agentRules,
+    agentRulesFile: behavior.agentRulesFile,
+    orchestratorRules: behavior.orchestratorRules,
+    orchestratorSessionStrategy: behavior.orchestratorSessionStrategy,
+    opencodeIssueSessionStrategy: behavior.opencodeIssueSessionStrategy,
+    decomposer: behavior.decomposer,
+  };
+}
+
+/**
+ * Load config using Option C hybrid mode.
+ *
+ * Detection logic:
+ * 1. If AO_CONFIG_PATH is set, use it as global config path
+ * 2. If we're inside a project dir with local config, merge with global
+ * 3. Otherwise fall back to standard loadConfig()
+ *
+ * Returns null if no config can be found.
+ */
+export function loadHybridConfig(opts?: {
+  globalConfigPath?: string;
+  projectPath?: string;
+}): OrchestratorConfig | null {
+  const globalPath = opts?.globalConfigPath ?? getGlobalConfigPath();
+
+  if (!existsSync(globalPath)) {
+    // No global config — fall back to legacy single-file mode
+    return null;
+  }
+
+  const global = loadGlobalConfig();
+  if (!global) return null;
+
+  // Build the full config by merging each project's local + shadow
+  const projects: Record<string, unknown> = {};
+
+  for (const [projectId, entry] of Object.entries(global.projects)) {
+    const projectPath = expandHome(entry.path);
+    const local = opts?.projectPath === projectPath ? loadLocalConfig(projectPath) : null;
+    projects[projectId] = mergeConfigs(entry, local, projectId);
+  }
+
+  // Construct a raw config object and validate through the standard pipeline
+  const rawConfig = {
+    port: global.port,
+    defaults: global.defaults,
+    projects,
+    notifiers: global.notifiers,
+    notificationRouting: global.notificationRouting,
+    reactions: global.reactions,
+  };
+
+  const config = validateConfig(rawConfig);
+  config.configPath = globalPath;
+  config.globalConfigPath = globalPath;
+  config.localConfigPath = opts?.projectPath ? findLocalConfigPath(opts.projectPath) : null;
+
+  return config;
+}
+
+// =============================================================================
+// SHADOW SYNC — Copy local behavior into global config
+// =============================================================================
+
+/**
+ * Sync local project behavior into the global config's shadow.
+ * Uses atomic write (write temp + rename) for safety.
+ */
+export function syncShadow(
+  globalConfigPath: string,
+  projectId: string,
+  localBehavior: ProjectBehavior,
+): void {
+  const lock = acquireConfigLock(globalConfigPath);
+  try {
+    const raw = readFileSync(globalConfigPath, "utf-8");
+    const parsed = parseYaml(raw) ?? {};
+
+    if (!parsed.projects) parsed.projects = {};
+    if (!parsed.projects[projectId]) {
+      // Project not in global config — nothing to shadow
+      return;
+    }
+
+    parsed.projects[projectId].shadow = localBehavior;
+
+    atomicWriteYaml(globalConfigPath, parsed);
+  } finally {
+    releaseConfigLock(lock);
+  }
+}
+
+// =============================================================================
+// FILE LOCKING — Advisory lock for global config writes
+// =============================================================================
+
+interface ConfigLock {
+  lockPath: string;
+  acquired: boolean;
+}
+
+/**
+ * Acquire an advisory file lock for global config writes.
+ * Uses mkdir-based locking (atomic on all filesystems).
+ * If lock can't be acquired within LOCK_TIMEOUT_MS, warns and proceeds.
+ */
+export function acquireConfigLock(configPath: string): ConfigLock {
+  const lockPath = join(dirname(configPath), LOCK_FILENAME);
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    try {
+      mkdirSync(lockPath);
+      return { lockPath, acquired: true };
+    } catch {
+      // Lock held by another process — poll
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+
+      // Synchronous sleep via Atomics (avoids busy loop)
+      const waitMs = Math.min(LOCK_POLL_MS, remaining);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+    }
+  }
+
+  // Timeout — warn but don't block
+  console.warn(
+    `[ao] Warning: Could not acquire config lock at ${lockPath} within ${LOCK_TIMEOUT_MS}ms. Proceeding without lock.`,
+  );
+  return { lockPath, acquired: false };
+}
+
+/**
+ * Release the advisory file lock.
+ */
+export function releaseConfigLock(lock: ConfigLock): void {
+  if (!lock.acquired) return;
+  try {
+    // rmdir (not recursive) — only works if directory is empty, which it should be
+    const { rmdirSync } = require("node:fs") as typeof import("node:fs");
+    rmdirSync(lock.lockPath);
+  } catch {
+    // Best-effort cleanup
+  }
+}
+
+// =============================================================================
+// ATOMIC WRITE — Write temp + rename
+// =============================================================================
+
+/**
+ * Atomically write a YAML file: write to temp, then rename.
+ */
+export function atomicWriteYaml(filePath: string, data: unknown): void {
+  const dir = dirname(filePath);
+  mkdirSync(dir, { recursive: true });
+
+  const tmpPath = `${filePath}.tmp.${process.pid}`;
+  writeFileSync(tmpPath, yamlStringify(data, { indent: 2 }), "utf-8");
+  renameSync(tmpPath, filePath);
+}
+
+// =============================================================================
+// MIGRATION — Single-file config → Global + Local
+// =============================================================================
+
+export interface ConfigMigrationResult {
+  migrated: boolean;
+  globalConfigPath: string;
+  sessionDirResults: import("./paths.js").MigrationResult[];
+  errors: string[];
+}
+
+/**
+ * Detect if a legacy single-file config needs migration to Option C format.
+ * Returns true if:
+ * 1. A single-file config exists (agent-orchestrator.yaml in project dir)
+ * 2. No global config exists yet
+ */
+export function needsMigration(configPath: string): boolean {
+  if (!existsSync(configPath)) return false;
+  if (globalConfigExists()) return false;
+  return true;
+}
+
+/**
+ * Migrate a legacy single-file config to Option C format:
+ * 1. Create global config with project registry + shadow
+ * 2. Rename session directories from old hash to new hash
+ */
+export function migrateToOptionC(oldConfigPath: string): ConfigMigrationResult {
+  const errors: string[] = [];
+  const globalPath = getGlobalConfigPath();
+
+  // Load the old config
+  const raw = readFileSync(oldConfigPath, "utf-8");
+  const parsed = parseYaml(raw);
+  const oldConfig = validateConfig(parsed);
+
+  // Build the global config
+  const globalProjects: Record<string, unknown> = {};
+
+  for (const [projectId, project] of Object.entries(oldConfig.projects)) {
+    const { repo, path, defaultBranch, ...behavior } = project;
+    globalProjects[projectId] = {
+      repo,
+      path,
+      defaultBranch,
+      shadow: behavior,
+    };
+  }
+
+  const globalData = {
+    port: oldConfig.port,
+    defaults: parsed.defaults,
+    projects: globalProjects,
+    notifiers: parsed.notifiers,
+    notificationRouting: parsed.notificationRouting,
+    reactions: parsed.reactions,
+  };
+
+  // Write global config atomically
+  try {
+    atomicWriteYaml(globalPath, globalData);
+  } catch (err) {
+    errors.push(`Failed to write global config: ${err instanceof Error ? err.message : err}`);
+    return { migrated: false, globalConfigPath: globalPath, sessionDirResults: [], errors };
+  }
+
+  // Migrate session directories
+  const sessionDirResults = migrateSessionDirs(oldConfigPath, oldConfig.projects);
+
+  for (const result of sessionDirResults) {
+    if (result.error) {
+      errors.push(`Session dir migration for ${result.projectId}: ${result.error}`);
+    }
+  }
+
+  return {
+    migrated: true,
+    globalConfigPath: globalPath,
+    sessionDirResults,
+    errors,
+  };
 }

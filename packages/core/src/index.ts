@@ -16,6 +16,22 @@ export {
   getDefaultConfig,
   findConfig,
   findConfigFile,
+  // Option C
+  loadGlobalConfig,
+  loadLocalConfig,
+  loadHybridConfig,
+  mergeConfigs,
+  syncShadow,
+  getGlobalConfigPath,
+  globalConfigExists,
+  findLocalConfigPath,
+  atomicWriteYaml,
+  acquireConfigLock,
+  releaseConfigLock,
+  needsMigration,
+  migrateToOptionC,
+  type LocalConfig,
+  type ConfigMigrationResult,
 } from "./config.js";
 
 // Plugin registry
@@ -141,8 +157,10 @@ export type {
 // Path utilities — hash-based directory structure
 export {
   generateConfigHash,
+  generateProjectHash,
   generateProjectId,
   generateInstanceId,
+  generateInstanceIdFromProject,
   generateSessionPrefix,
   getProjectBaseDir,
   getSessionsDir,
@@ -153,9 +171,12 @@ export {
   getOriginFilePath,
   generateSessionName,
   generateTmuxName,
+  generateTmuxNameFromProject,
   parseTmuxName,
   expandHome,
   validateAndStoreOrigin,
+  migrateSessionDirs,
+  type MigrationResult,
 } from "./paths.js";
 
 // Config generator — auto-generate config from repo URL

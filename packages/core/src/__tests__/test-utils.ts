@@ -206,6 +206,8 @@ export function createTestEnvironment(): TestEnvironment {
 
   const config: OrchestratorConfig = {
     configPath,
+    globalConfigPath: configPath,
+    localConfigPath: null,
     port: 3000,
     defaults: {
       runtime: "mock",
@@ -277,6 +279,8 @@ export function setupTestContext(): TestContext {
 
   const config: OrchestratorConfig = {
     configPath,
+    globalConfigPath: configPath,
+    localConfigPath: null,
     port: 3000,
     defaults: {
       runtime: "mock",

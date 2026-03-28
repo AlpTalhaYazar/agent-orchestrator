@@ -72,6 +72,8 @@ describe("recovery validator", () => {
     };
     const config: OrchestratorConfig = {
       configPath: join(rootDir, "agent-orchestrator.yaml"),
+      globalConfigPath: join(rootDir, "agent-orchestrator.yaml"),
+      localConfigPath: null,
       port: 3000,
       readyThresholdMs: 300_000,
       defaults: {
