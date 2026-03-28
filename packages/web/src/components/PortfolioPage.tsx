@@ -81,7 +81,7 @@ function LauncherCard({
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-h-[154px] flex-col rounded-[18px] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-4 text-left shadow-[0_12px_30px_rgba(0,0,0,0.05)] transition duration-150 hover:-translate-y-0.5 hover:border-[var(--color-border-default)] hover:shadow-[0_18px_40px_rgba(0,0,0,0.08)]"
+      className="group flex min-h-[154px] flex-col rounded-none border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-4 text-left shadow-[var(--card-shadow)] transition duration-150 hover:border-[var(--color-border-default)] hover:shadow-[var(--card-shadow-hover)]"
     >
       <div className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] transition-colors group-hover:text-[var(--color-text-primary)]">
         {icon}
