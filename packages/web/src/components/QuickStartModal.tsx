@@ -160,7 +160,7 @@ export function QuickStartModal({
                   key={option.id}
                   type="button"
                   onClick={() => setTemplate(option.id)}
-                  className="relative rounded-[14px] border px-4 py-4 text-left transition-colors"
+                  className="relative rounded-none border px-4 py-4 text-left transition-colors"
                   style={{
                     minHeight: 136,
                     borderColor: active ? "var(--color-accent)" : "var(--color-border-subtle)",

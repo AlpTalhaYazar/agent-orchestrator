@@ -272,7 +272,7 @@ export function WorkspaceResourcesModal({
         {error ? <div className="text-[12px] text-[var(--color-status-error)]">{error}</div> : null}
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_240px]">
-          <div className="max-h-[420px] overflow-y-auto rounded-[16px] border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
+          <div className="max-h-[420px] overflow-y-auto rounded-none border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)]">
             {loading ? (
               <div className="px-4 py-6 text-[13px] text-[var(--color-text-tertiary)]">
                 Loading resources...
@@ -320,7 +320,7 @@ export function WorkspaceResourcesModal({
             )}
           </div>
 
-          <div className="rounded-[16px] border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-4 py-4">
+          <div className="rounded-none border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] px-4 py-4">
             {selected ? (
               <div className="space-y-3">
                 <div className="text-[12px] uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">
