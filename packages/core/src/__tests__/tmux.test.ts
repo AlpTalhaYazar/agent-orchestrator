@@ -160,16 +160,16 @@ describe("newSession", () => {
   });
 
   it("sends initial command after creation", async () => {
-    // Calls: new-session, set-option history-limit, send-keys Escape, send-keys text, send-keys Enter
+    // Calls: new-session, send-keys (set-option), send-keys Escape, send-keys text, send-keys Enter
     mockTmuxSequence([{ stdout: "" }, { stdout: "" }, { stdout: "" }, { stdout: "" }, { stdout: "" }]);
 
     await newSession({ name: "test-4", cwd: "/tmp", command: "echo hello" });
 
     expect(mockExecFile).toHaveBeenCalledTimes(5);
     // Call 0: new-session
-    // Call 1: set-option history-limit
+    // Call 1: send-keys set-option (history-limit)
     const historyLimitArgs = mockExecFile.mock.calls[1][1] as string[];
-    expect(historyLimitArgs).toEqual(["set-option", "-t", "test-4", "history-limit", "10000"]);
+    expect(historyLimitArgs).toEqual(["send-keys", "-t", "test-4", "set-option history-limit 10000"]);
     // Call 2: send-keys Escape (clear partial input)
     const escapeArgs = mockExecFile.mock.calls[2][1] as string[];
     expect(escapeArgs).toEqual(["send-keys", "-t", "test-4", "Escape"]);
