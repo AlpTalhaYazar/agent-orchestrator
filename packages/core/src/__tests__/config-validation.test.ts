@@ -299,6 +299,7 @@ describe("Config Validation - SCM webhook contract", () => {
 
     expect(config.projects["proj1"]?.scm).toEqual({
       plugin: "github",
+      apiStrategy: "graphql-batch",
       webhook: {
         enabled: true,
         path: "/api/webhooks/github",
