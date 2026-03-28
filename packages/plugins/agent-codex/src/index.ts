@@ -420,14 +420,8 @@ function createCodexAgent(): Agent {
 
       if (!session.workspacePath) return null;
 
-      // 1. Check AO activity JSONL first (written by recordActivity from terminal output).
-      //    This catches waiting_input/blocked reliably via terminal parsing, regardless
-      //    of whether Codex's native JSONL has those entry types.
-      const activityResult = await readLastActivityEntry(session.workspacePath);
-      const activityState = checkActivityLogState(activityResult, threshold);
-      if (activityState) return activityState;
-
-      // 2. Try Codex's native JSONL for richer state detection
+      // 1. Try Codex's native JSONL first — it has richer 6-state detection
+      //    (approval_request, error, tool_call, etc.) that terminal parsing can't match.
       const sessionFile = await findCodexSessionFileCached(session.workspacePath);
       if (sessionFile) {
         const entry = await readLastJsonlEntry(sessionFile);
@@ -460,14 +454,11 @@ function createCodexAgent(): Agent {
         }
       }
 
-      // 3. If AO activity log had non-critical state, use it as fallback
-      if (activityResult) {
-        const ageMs = Date.now() - activityResult.modifiedAt.getTime();
-        if (ageMs <= threshold) {
-          return { state: activityResult.entry.state, timestamp: activityResult.modifiedAt };
-        }
-        return { state: "idle", timestamp: activityResult.modifiedAt };
-      }
+      // 2. Fallback: check AO activity JSONL (terminal-derived) for waiting_input/blocked
+      //    that the native JSONL may not have captured.
+      const activityResult = await readLastActivityEntry(session.workspacePath);
+      const activityState = checkActivityLogState(activityResult, threshold);
+      if (activityState) return activityState;
 
       return null;
     },
