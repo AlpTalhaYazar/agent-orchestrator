@@ -1,3 +1,5 @@
+/* eslint-disable no-console -- console usage in BatchObserverImpl is intentional logging */
+
 /**
  * REST API Parallel PR Enrichment with 2-Guard ETag Strategy
  *
