@@ -240,12 +240,12 @@ export function WorkspaceResourcesModal({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search by title, number, or author"
-            className="w-full rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-4 py-3 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
+            className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-4 py-3 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
           />
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1 rounded-[12px] border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] p-1">
+          <div className="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-base)] p-1">
             {[
               ["pullRequests", "Pull requests"],
               ["branches", "Branches"],
@@ -350,7 +350,7 @@ export function WorkspaceResourcesModal({
                     Open source link
                   </a>
                 ) : null}
-                <div className="rounded-[12px] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">
+                <div className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] px-3 py-2 text-[12px] text-[var(--color-text-secondary)]">
                   {selected.tab === "pullRequests"
                     ? `Use branch ${selected.item.branch} to continue this PR.`
                     : selected.tab === "branches"

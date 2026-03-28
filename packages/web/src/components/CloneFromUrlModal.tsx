@@ -81,7 +81,7 @@ export function CloneFromUrlModal({
             type="button"
             onClick={handleClone}
             disabled={disabled}
-            className="rounded-[12px] bg-[var(--color-accent)] px-5 py-2 text-[12px] font-semibold text-[var(--color-text-inverse)] disabled:opacity-50"
+            className="rounded-[var(--radius-sm)] bg-[var(--color-accent)] px-5 py-2 text-[12px] font-semibold text-[var(--color-text-inverse)] disabled:opacity-50"
             style={{ minHeight: 44 }}
           >
             {cloning ? "Cloning..." : "Clone repository"}
@@ -101,7 +101,7 @@ export function CloneFromUrlModal({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://github.com/user/repo.git"
-            className="w-full rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-status-error)] focus:outline-none"
+            className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-status-error)] focus:outline-none"
             style={{ minHeight: 44 }}
           />
         </div>
@@ -114,7 +114,7 @@ export function CloneFromUrlModal({
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="w-full rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
+            className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
             style={{ minHeight: 44, fontFamily: "var(--font-ibm-plex-mono)" }}
           />
         </div>

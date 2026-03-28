@@ -130,7 +130,7 @@ export function QuickStartModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="test"
-            className="w-full rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
+            className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
             style={{ minHeight: 44 }}
           />
         </div>
@@ -143,7 +143,7 @@ export function QuickStartModal({
             type="text"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="w-full rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
+            className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border-default)] bg-[var(--color-bg-base)] px-3 py-2 text-[14px] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
             style={{ minHeight: 44, fontFamily: "var(--font-ibm-plex-mono)" }}
           />
         </div>
