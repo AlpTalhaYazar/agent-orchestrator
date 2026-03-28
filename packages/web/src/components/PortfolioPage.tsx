@@ -82,7 +82,7 @@ function LauncherCard({
       onClick={onClick}
       className="group flex min-h-[154px] flex-col rounded-none border border-[var(--color-border-subtle)] bg-[var(--color-bg-surface)] p-4 text-left shadow-[var(--card-shadow)] transition duration-150 hover:border-[var(--color-border-default)] hover:shadow-[var(--card-shadow-hover)]"
     >
-      <div className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] transition-colors group-hover:text-[var(--color-text-primary)]">
+      <div className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] text-[var(--color-text-secondary)] transition-colors group-hover:text-[var(--color-text-primary)]">
         {icon}
       </div>
       <div className="mt-auto">
