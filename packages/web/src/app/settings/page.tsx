@@ -74,7 +74,7 @@ export default async function SettingsRoute() {
     <DashboardShell projects={projectSummaries} defaultLocation={homedir()}>
       <main className="min-h-screen bg-[var(--color-bg-base)] px-5 py-8 text-[var(--color-text-primary)] sm:px-6 lg:px-10">
         <div className="mx-auto max-w-[1120px]">
-          <header className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
+          <header className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[var(--card-shadow)]">
             <div className="font-[family-name:var(--font-ibm-plex-mono)] text-[10px] uppercase tracking-[0.18em] text-[var(--color-text-tertiary)]">
               Settings
             </div>
@@ -88,7 +88,7 @@ export default async function SettingsRoute() {
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
             <div className="space-y-6">
-              <section id="preferences" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[0_12px_34px_rgba(0,0,0,0.05)]">
+              <section id="preferences" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[var(--card-shadow)]">
                 <PreferenceSettings
                   projects={projectOptions}
                   initialOrder={initialOrder}
@@ -96,7 +96,7 @@ export default async function SettingsRoute() {
                 />
               </section>
 
-              <section id="projects" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[0_12px_34px_rgba(0,0,0,0.05)]">
+              <section id="projects" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[var(--card-shadow)]">
                 <ProjectSettings
                   projects={portfolio.map((project) => ({
                     id: project.id,
@@ -114,14 +114,14 @@ export default async function SettingsRoute() {
             </div>
 
             <div className="space-y-6">
-              <section id="agents" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[0_12px_34px_rgba(0,0,0,0.05)]">
+              <section id="agents" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[var(--card-shadow)]">
                 <AgentSettings
                   defaultAgent={agentDefaults.agent}
                   workspaceStrategy={agentDefaults.workspace}
                 />
               </section>
 
-              <section id="integrations" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[0_12px_34px_rgba(0,0,0,0.05)]">
+              <section id="integrations" className="rounded-none border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-6 py-6 shadow-[var(--card-shadow)]">
                 <IntegrationSettings />
               </section>
             </div>
