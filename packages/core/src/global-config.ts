@@ -55,13 +55,18 @@ const SECRET_SUFFIX_PATTERN = /(token|key|secret|password)$/i;
  * Return the canonical path to the global config file.
  *
  * Priority:
- *   1. AO_CONFIG_PATH environment variable
+ *   1. AO_GLOBAL_CONFIG environment variable (explicit global config override)
  *   2. $XDG_CONFIG_HOME/agent-orchestrator/config.yaml
  *   3. ~/.agent-orchestrator/config.yaml  (default)
+ *
+ * NOTE: This intentionally does NOT read AO_CONFIG_PATH. That env var is used
+ * by findConfigFile() to locate any config (including project-local ones).
+ * Using it here would risk overwriting a project-local config with global-format
+ * YAML when syncProjectShadow/registerProjectInGlobalConfig call this function.
  */
 export function getGlobalConfigPath(): string {
-  if (process.env["AO_CONFIG_PATH"]) {
-    return resolve(process.env["AO_CONFIG_PATH"]);
+  if (process.env["AO_GLOBAL_CONFIG"]) {
+    return resolve(process.env["AO_GLOBAL_CONFIG"]);
   }
 
   const xdgConfigHome = process.env["XDG_CONFIG_HOME"];
@@ -124,14 +129,12 @@ export const GlobalConfigSchema = z
     /** Notification channel configurations. */
     notifiers: z.record(z.object({ plugin: z.string() }).passthrough()).default({}),
     /** Maps priority levels to notifier channel IDs. */
-    notificationRouting: z
-      .record(z.array(z.string()))
-      .default({
-        urgent: ["desktop", "composio"],
-        action: ["desktop", "composio"],
-        warning: ["composio"],
-        info: ["composio"],
-      }),
+    notificationRouting: z.record(z.array(z.string())).default({
+      urgent: ["desktop", "composio"],
+      action: ["desktop", "composio"],
+      warning: ["composio"],
+      info: ["composio"],
+    }),
     /** Reaction rules (default reactions merged at load time). */
     reactions: z.record(z.object({}).passthrough()).default({}),
   })
@@ -335,7 +338,7 @@ export function syncProjectShadow(
 
   // Rebuild project entry: preserve identity, overwrite behavior
   globalConfig.projects[projectId] = {
-    ...(existing?.name != null ? { name: existing.name } : {}),
+    ...(existing?.name !== null && existing?.name !== undefined ? { name: existing.name } : {}),
     path: existing?.path ?? "",
     ...shadowFields,
     _shadowSyncedAt: Math.floor(Date.now() / 1000),
@@ -448,10 +451,7 @@ export function buildEffectiveProjectConfig(
  * Returns true if the local config file is newer than the last shadow sync.
  * Used by `ao status` to warn the user to restart ao.
  */
-export function isProjectShadowStale(
-  projectId: string,
-  globalConfig: GlobalConfig,
-): boolean {
+export function isProjectShadowStale(projectId: string, globalConfig: GlobalConfig): boolean {
   const entry = globalConfig.projects[projectId] as
     | (GlobalProjectEntry & { _shadowSyncedAt?: number })
     | undefined;
@@ -497,7 +497,7 @@ export function isOldConfigFormat(raw: unknown): boolean {
   const projects = obj["projects"] as Record<string, unknown>;
   return Object.values(projects).some(
     (entry) =>
-      entry != null && typeof entry === "object" && "path" in (entry as Record<string, unknown>),
+      entry !== null && entry !== undefined && typeof entry === "object" && "path" in (entry as Record<string, unknown>),
   );
 }
 
@@ -523,10 +523,7 @@ export function isOldConfigFormat(raw: unknown): boolean {
  * @param globalConfigPath  Override for global config path (default: getGlobalConfigPath())
  * @returns The global config path
  */
-export function migrateToGlobalConfig(
-  oldConfigPath: string,
-  globalConfigPath?: string,
-): string {
+export function migrateToGlobalConfig(oldConfigPath: string, globalConfigPath?: string): string {
   const targetGlobalPath = globalConfigPath ?? getGlobalConfigPath();
 
   const raw = readFileSync(oldConfigPath, "utf-8");
@@ -543,16 +540,21 @@ export function migrateToGlobalConfig(
 
   // Preserve global operational settings
   if (typeof parsed["port"] === "number") newGlobal.port = parsed["port"];
-  if (parsed["terminalPort"] != null) newGlobal.terminalPort = parsed["terminalPort"] as number;
-  if (parsed["directTerminalPort"] != null)
+  if (parsed["terminalPort"] !== null && parsed["terminalPort"] !== undefined) newGlobal.terminalPort = parsed["terminalPort"] as number;
+  if (parsed["directTerminalPort"] !== null && parsed["directTerminalPort"] !== undefined)
     newGlobal.directTerminalPort = parsed["directTerminalPort"] as number;
-  if (parsed["readyThresholdMs"] != null)
+  if (parsed["readyThresholdMs"] !== null && parsed["readyThresholdMs"] !== undefined)
     newGlobal.readyThresholdMs = parsed["readyThresholdMs"] as number;
-  if (parsed["defaults"] != null) newGlobal.defaults = parsed["defaults"] as GlobalConfig["defaults"];
-  if (parsed["notifiers"] != null) newGlobal.notifiers = parsed["notifiers"] as GlobalConfig["notifiers"];
-  if (parsed["notificationRouting"] != null)
-    newGlobal.notificationRouting = parsed["notificationRouting"] as GlobalConfig["notificationRouting"];
-  if (parsed["reactions"] != null) newGlobal.reactions = parsed["reactions"] as GlobalConfig["reactions"];
+  if (parsed["defaults"] !== null && parsed["defaults"] !== undefined)
+    newGlobal.defaults = parsed["defaults"] as GlobalConfig["defaults"];
+  if (parsed["notifiers"] !== null && parsed["notifiers"] !== undefined)
+    newGlobal.notifiers = parsed["notifiers"] as GlobalConfig["notifiers"];
+  if (parsed["notificationRouting"] !== null && parsed["notificationRouting"] !== undefined)
+    newGlobal.notificationRouting = parsed[
+      "notificationRouting"
+    ] as GlobalConfig["notificationRouting"];
+  if (parsed["reactions"] !== null && parsed["reactions"] !== undefined)
+    newGlobal.reactions = parsed["reactions"] as GlobalConfig["reactions"];
 
   const now = Math.floor(Date.now() / 1000);
 

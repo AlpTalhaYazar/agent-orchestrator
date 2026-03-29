@@ -25,7 +25,7 @@ import {
   generateSessionPrefix,
 } from "./paths.js";
 import { loadConfig, findConfigFile } from "./config.js";
-import { loadGlobalConfig, getGlobalConfigPath } from "./global-config.js";
+import { getGlobalConfigPath } from "./global-config.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { derivePortfolioProjectId } from "./portfolio-routing.js";
 
@@ -74,7 +74,7 @@ export function discoverProjects(): PortfolioProject[] {
     let config: OrchestratorConfig | null = null;
     let projectConfig: ProjectConfig | undefined;
     let degraded = false;
-    let degradedReason: string | undefined;
+    let _degradedReason: string | undefined;
 
     try {
       config = loadConfig(configPath);
@@ -82,7 +82,7 @@ export function discoverProjects(): PortfolioProject[] {
       if (!projectConfig) {
         // The config key may differ from the directory-level projectId.
         // Try to find a matching project by path basename.
-        for (const [key, pc] of Object.entries(config.projects)) {
+        for (const [_key, pc] of Object.entries(config.projects)) {
           if (basename(pc.path) === projectId) {
             projectConfig = pc;
             break;
@@ -99,7 +99,7 @@ export function discoverProjects(): PortfolioProject[] {
           config = loadConfig(globalPath);
           projectConfig = config.projects[projectId];
           if (!projectConfig) {
-            for (const [key, pc] of Object.entries(config.projects)) {
+            for (const [_key, pc] of Object.entries(config.projects)) {
               if (basename(pc.path) === projectId) {
                 projectConfig = pc;
                 break;
@@ -113,7 +113,7 @@ export function discoverProjects(): PortfolioProject[] {
 
       if (!projectConfig) {
         degraded = true;
-        degradedReason = `Failed to load config at ${configPath}`;
+        _degradedReason = `Failed to load config at ${configPath}`;
       }
     }
 

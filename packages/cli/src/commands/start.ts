@@ -30,7 +30,6 @@ import {
   normalizeOrchestratorSessionStrategy,
   ConfigNotFoundError,
   loadLocalProjectConfig,
-  syncProjectShadow,
   registerProjectInGlobalConfig,
   getGlobalConfigPath,
   isProjectShadowStale,

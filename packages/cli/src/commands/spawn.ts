@@ -250,7 +250,7 @@ export function registerSpawn(program: Command): void {
 
         let config: OrchestratorConfig;
         let projectId: string;
-        let issueId: string | undefined = first;
+        const issueId: string | undefined = first;
 
         if (opts.project) {
           // ── Remote mode: load shadow from global registry ──

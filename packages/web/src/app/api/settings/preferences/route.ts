@@ -20,7 +20,7 @@ export async function PUT(request: Request) {
     const preferences = loadPreferences();
 
     if (parsed.data.projectOrder) {
-      const ordered = parsed.data.projectOrder.filter((id) => portfolioIds.has(id));
+      const ordered = parsed.data.projectOrder.filter((id: string) => portfolioIds.has(id));
       preferences.projectOrder = ordered.length > 0 ? ordered : undefined;
     }
 
