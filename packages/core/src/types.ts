@@ -1,3 +1,5 @@
+import type { ObservabilityLevel } from "./observability.js";
+
 /**
  * Agent Orchestrator — Core Type Definitions
  *
@@ -761,9 +763,6 @@ export interface PREnrichmentData {
   /** List of blockers preventing merge */
   blockers?: string[];
 }
-
-/** Observability log level - mirrors the value from observability.ts */
-export type ObservabilityLevel = "debug" | "info" | "warn" | "error";
 
 /**
  * Observer for GraphQL batch PR enrichment operations.

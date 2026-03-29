@@ -8,6 +8,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type {
+  BatchObserver,
   CIStatus,
   ObservabilityLevel,
   PREnrichmentData,
@@ -289,28 +290,6 @@ export function setPRMetadata(
 export function clearPRMetadataCache(): void {
   prMetadataCache.clear();
   prEnrichmentDataCache.clear();
-}
-
-/**
- * Interface for recording GraphQL batch observability operations.
- * Allows the caller to provide an observer that records to
- * observability system instead of using console.log.
- */
-export interface BatchObserver {
-  recordSuccess(data: {
-    batchIndex: number;
-    totalBatches: number;
-    prCount: number;
-    durationMs: number;
-  }): void;
-  recordFailure(data: {
-    batchIndex: number;
-    totalBatches: number;
-    prCount: number;
-    error: string;
-    durationMs: number;
-  }): void;
-  log(level: ObservabilityLevel, message: string): void;
 }
 
 /**
@@ -618,6 +597,7 @@ function parseCIState(
   // significantly cheaper than fetching contexts (10 points vs 50+ per PR)
   if (state === "SUCCESS") return "passing";
   if (state === "FAILURE") return "failing";
+  if (state === "ERROR") return "failing";
   if (state === "PENDING" || state === "EXPECTED") return "pending";
   if (state === "TIMED_OUT" || state === "CANCELLED" || state === "ACTION_REQUIRED")
     return "failing";

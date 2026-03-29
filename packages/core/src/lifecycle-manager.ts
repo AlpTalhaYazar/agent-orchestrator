@@ -268,7 +268,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
                 data: {
                   plugin: pluginKey,
                   prCount: pluginPRs.length,
-                  prKeys: Array.from(enrichmentData.keys()),
+                  prKeys: pluginPRs.map((pr) => `${pr.owner}/${pr.repo}#${pr.number}`),
                 },
                 level: "info",
               });

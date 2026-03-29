@@ -27,6 +27,7 @@ import {
   type AutomatedComment,
   type MergeReadiness,
   type PREnrichmentData,
+  type BatchObserver,
 } from "@composio/ao-core";
 import {
   enrichSessionsPRBatch as enrichSessionsPRBatchImpl,
@@ -1034,8 +1035,11 @@ function createGitHubSCM(): SCM {
      *
      * This reduces API calls from N×3 to 1 (or a few if batching needed).
      */
-    async enrichSessionsPRBatch(prs: PRInfo[]): Promise<Map<string, PREnrichmentData>> {
-      return enrichSessionsPRBatchImpl(prs);
+    async enrichSessionsPRBatch(
+      prs: PRInfo[],
+      observer?: BatchObserver,
+    ): Promise<Map<string, PREnrichmentData>> {
+      return enrichSessionsPRBatchImpl(prs, observer);
     },
   };
 }
