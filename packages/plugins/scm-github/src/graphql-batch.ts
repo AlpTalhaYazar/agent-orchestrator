@@ -781,20 +781,41 @@ export async function enrichSessionsPRBatch(
   const guardResult = await shouldRefreshPREnrichment(prs);
 
   if (!guardResult.shouldRefresh) {
-    // No changes detected - skip expensive GraphQL queries
-    // Return cached enrichment data instead of empty map
+    // No changes detected - try to return cached data
+    // If any PRs are missing from cache, we need to fetch them via GraphQL
+    let missingPRs: PRInfo[] = [];
+
     for (const pr of prs) {
       const prKey = `${pr.owner}/${pr.repo}#${pr.number}`;
       const cachedData = prEnrichmentDataCache.get(prKey);
       if (cachedData) {
         result.set(prKey, cachedData);
+      } else {
+        missingPRs.push(pr);
       }
     }
+
+    if (missingPRs.length === 0) {
+      // All PRs cached - return cached data
+      observer?.log(
+        "info",
+        `[ETag Guard] Skipping GraphQL batch - all ${result.size} PRs cached. Reasons: ${guardResult.details.join(", ")}`,
+      );
+      return result;
+    }
+
+    // Some PRs not cached - fetch missing PRs via GraphQL
     observer?.log(
       "info",
-      `[ETag Guard] Skipping GraphQL batch - no changes detected. Returning ${result.size} cached PR enrichments. Reasons: ${guardResult.details.join(", ")}`,
+      `[ETag Guard] Partial cache: ${result.size} cached, ${missingPRs.length} missing. Fetching missing PRs via GraphQL.`,
     );
-    return result;
+    prs = missingPRs; // Update to only fetch missing PRs
+    // Continue to GraphQL batch processing below
+  } else {
+    observer?.log(
+      "info",
+      `[ETag Guard] Changes detected, running GraphQL batch. Reasons: ${guardResult.details.join(", ")}`,
+    );
   }
 
   observer?.log(
