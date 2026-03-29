@@ -867,7 +867,7 @@ export async function enrichSessionsPRBatch(
         // Only add if not already in result (could be partially successful)
         if (!result.has(prKey)) {
           const notFoundEnrichment: PREnrichmentData = {
-            state: pr.isDraft ? "open" : "closed",
+            state: "closed",
             ciStatus: "none",
             reviewDecision: "none",
             mergeable: false,
