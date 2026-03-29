@@ -113,12 +113,16 @@ export function checkActivityLogState(
 ): ActivityDetection | null {
   if (!activityResult) return null;
 
-  const { entry, modifiedAt } = activityResult;
+  const { entry } = activityResult;
 
   if (entry.state === "waiting_input" || entry.state === "blocked") {
-    const ageMs = Date.now() - modifiedAt.getTime();
+    // Use the entry's own timestamp for staleness — not file mtime, which
+    // gets refreshed every poll cycle by recordActivity and would prevent
+    // stale entries from ever being detected.
+    const entryTs = new Date(entry.ts);
+    const ageMs = Date.now() - entryTs.getTime();
     if (ageMs <= ACTIVITY_INPUT_STALENESS_MS) {
-      return { state: entry.state, timestamp: modifiedAt };
+      return { state: entry.state, timestamp: entryTs };
     }
   }
 

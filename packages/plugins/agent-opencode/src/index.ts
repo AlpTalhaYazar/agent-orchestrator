@@ -246,7 +246,7 @@ function createOpenCodeAgent(): Agent {
         ];
         const captureScript = buildSessionIdCaptureScript();
         const fallbackScript = buildSessionLookupScript();
-        const runCommand = ["opencode", "run", ...runOptions, "--", "noop"].join(" ");
+        const runCommand = ["opencode", "run", ...runOptions, "--command", "true"].join(" ");
         const resumeOptions = [...(promptValue ? ["--prompt", promptValue] : []), ...sharedOptions];
         const resumeOptionsSuffix = resumeOptions.length > 0 ? ` ${resumeOptions.join(" ")}` : "";
         const missingSessionError = shellEscape(
@@ -341,17 +341,12 @@ function createOpenCodeAgent(): Agent {
         }
       }
 
-      // 3. Fallback: use JSONL file mtime for active/ready/idle when session list
-      //    is unavailable (e.g. opencode session list fails or session not found).
+      // 3. Fallback: use JSONL entry state when session list is unavailable.
+      //    Use the entry's own timestamp (not file mtime) because recordActivity
+      //    refreshes mtime every poll cycle, which would mask idle/stuck states.
       if (activityResult) {
-        const ageMs = Math.max(0, Date.now() - activityResult.modifiedAt.getTime());
-        if (ageMs <= activeWindowMs) {
-          return { state: "active", timestamp: activityResult.modifiedAt };
-        }
-        if (ageMs <= threshold) {
-          return { state: "ready", timestamp: activityResult.modifiedAt };
-        }
-        return { state: "idle", timestamp: activityResult.modifiedAt };
+        const entryTs = new Date(activityResult.entry.ts);
+        return { state: activityResult.entry.state, timestamp: entryTs };
       }
 
       return null;
