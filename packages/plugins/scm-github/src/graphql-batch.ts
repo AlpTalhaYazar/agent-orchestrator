@@ -10,7 +10,6 @@ import { promisify } from "node:util";
 import type {
   BatchObserver,
   CIStatus,
-  ObservabilityLevel,
   PREnrichmentData,
   PRInfo,
   PRState,
