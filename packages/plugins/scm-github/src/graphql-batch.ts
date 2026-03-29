@@ -811,17 +811,7 @@ export async function enrichSessionsPRBatch(
     );
     prs = missingPRs; // Update to only fetch missing PRs
     // Continue to GraphQL batch processing below
-  } else {
-    observer?.log(
-      "info",
-      `[ETag Guard] Changes detected, running GraphQL batch. Reasons: ${guardResult.details.join(", ")}`,
-    );
   }
-
-  observer?.log(
-    "info",
-    `[ETag Guard] Changes detected, running GraphQL batch. Reasons: ${guardResult.details.join(", ")}`,
-  );
 
   // Step 2: Split into batches if we have too many PRs
   const batches: PRInfo[][] = [];
