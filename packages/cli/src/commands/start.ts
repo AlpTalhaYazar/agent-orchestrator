@@ -1241,8 +1241,8 @@ export function registerStart(program: Command): void {
             const multiResult = await handleMultiProjectStart(cwd());
             if (multiResult) {
               config = multiResult.config;
-              projectId = multiResult.projectId;
-              project = config.projects[projectId];
+              // If projectArg was provided, honor it instead of the cwd-derived ID
+              ({ projectId, project } = await resolveProject(config, projectArg ?? multiResult.projectId));
             } else {
               // Fall back to legacy single-file config or auto-create
               let loadedConfig: OrchestratorConfig | null = null;

@@ -34,9 +34,7 @@ export {
   loadLocalProjectConfig,
   syncShadow,
   isOldConfigFormat,
-  isFlatLocalConfig,
   matchProjectByCwd,
-  findProjectByPath,
 } from "./global-config.js";
 export type {
   ConfigMode,
