@@ -16,7 +16,6 @@ import { resolve, join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
-import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 
 // =============================================================================
@@ -226,13 +225,14 @@ function expandHome(filepath: string): string {
  * Discover the global config file path.
  *
  * Discovery order:
- * 1. AO_CONFIG_PATH env var (if set)
+ * 1. AO_GLOBAL_CONFIG_PATH env var (dedicated to global config — avoids
+ *    collision with AO_CONFIG_PATH which points to local/legacy configs)
  * 2. $XDG_CONFIG_HOME/agent-orchestrator/config.yaml (if XDG_CONFIG_HOME set)
  * 3. ~/.agent-orchestrator/config.yaml (fallback)
  */
 export function findGlobalConfigPath(): string {
-  if (process.env["AO_CONFIG_PATH"]) {
-    return resolve(process.env["AO_CONFIG_PATH"]);
+  if (process.env["AO_GLOBAL_CONFIG_PATH"]) {
+    return resolve(process.env["AO_GLOBAL_CONFIG_PATH"]);
   }
 
   if (process.env["XDG_CONFIG_HOME"]) {
@@ -329,7 +329,9 @@ export function saveGlobalConfig(config: GlobalConfig): void {
   }
 
   const yaml = stringifyYaml(serializable, { lineWidth: 0 });
-  const tmpPath = join(tmpdir(), `ao-config-${randomBytes(6).toString("hex")}.yaml`);
+  // Write temp file in the same directory as the target to avoid EXDEV errors
+  // when /tmp is on a different filesystem (common on Linux with tmpfs).
+  const tmpPath = join(dir, `.config-${randomBytes(6).toString("hex")}.yaml.tmp`);
   writeFileSync(tmpPath, yaml, "utf-8");
   renameSync(tmpPath, path);
 }
@@ -507,22 +509,28 @@ function filterSecrets(
 /**
  * Detect if raw YAML content is the old single-project format.
  * Old format has a `projects:` key at the top level with project entries
- * that contain both identity (path, name) and behavior fields.
+ * that contain both identity (path, name) and behavior fields, but do NOT
+ * have `_shadowSyncedAt` (which is only present in migrated global configs).
  */
 export function isOldConfigFormat(raw: unknown): boolean {
   if (typeof raw !== "object" || raw === null) return false;
   const obj = raw as Record<string, unknown>;
 
-  // Old format: has `projects` key and at least one project with `path` field
+  // Old format: has `projects` key and at least one project with `path` + `repo`
   if (!obj["projects"] || typeof obj["projects"] !== "object") return false;
 
   const projects = obj["projects"] as Record<string, unknown>;
+  let hasOldStyleEntry = false;
   for (const entry of Object.values(projects)) {
-    if (typeof entry === "object" && entry !== null && "path" in entry && "repo" in entry) {
-      return true;
+    if (typeof entry !== "object" || entry === null) continue;
+    const e = entry as Record<string, unknown>;
+    // Global configs have `_shadowSyncedAt` — skip those
+    if ("_shadowSyncedAt" in e) return false;
+    if ("path" in e && "repo" in e) {
+      hasOldStyleEntry = true;
     }
   }
-  return false;
+  return hasOldStyleEntry;
 }
 
 /**

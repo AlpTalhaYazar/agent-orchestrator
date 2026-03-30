@@ -132,9 +132,24 @@ export function migrateToMultiProject(configPath: string): MigrationResult {
   // Identity fields that should NOT be in local config
   const identityFields = new Set(["name", "path", "sessionPrefix"]);
 
+  // Track used IDs to detect collisions within this migration
+  const usedIds = new Set<string>();
+
   for (const [configKey, projectRaw] of Object.entries(oldProjects)) {
     const projectPath = expandHome(String(projectRaw["path"] ?? ""));
-    const projectId = generateSessionPrefix(generateProjectId(projectPath));
+    let projectId = generateSessionPrefix(generateProjectId(projectPath));
+
+    // Handle ID collision: append numeric suffix until unique
+    if (usedIds.has(projectId)) {
+      let suffix = 2;
+      while (usedIds.has(`${projectId}${suffix}`)) suffix++;
+      const newId = `${projectId}${suffix}`;
+      warnings.push(
+        `ID collision: "${configKey}" derived ID "${projectId}" already taken. Using "${newId}" instead.`,
+      );
+      projectId = newId;
+    }
+    usedIds.add(projectId);
 
     // Build global registry entry (identity + shadow)
     const globalEntry: GlobalProjectEntry = {
