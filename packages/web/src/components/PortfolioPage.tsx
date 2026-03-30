@@ -24,18 +24,16 @@ interface PortfolioPageProps {
   initialCards: ProjectCardData[];
 }
 
-/** Classify a session into a kanban bucket based on status + activity */
+/** Classify a session into a kanban bucket based on status only */
 function classifySession(session: {
   status: string;
-  activity: string | null;
-  attentionLevel: string;
 }): keyof ProjectCardData["sessionCounts"] | "done" {
-  const { status, attentionLevel } = session;
+  const { status } = session;
 
   if (status === "merged" || status === "killed" || status === "done" || status === "terminated" || status === "cleanup") {
     return "done";
   }
-  if (attentionLevel === "urgent" || status === "needs_input" || status === "stuck" || status === "changes_requested") {
+  if (status === "needs_input" || status === "stuck" || status === "changes_requested" || status === "errored") {
     return "respond";
   }
   if (status === "mergeable" || status === "approved") {
@@ -104,8 +102,6 @@ export function PortfolioPage({ projects, initialCards }: PortfolioPageProps) {
           id: string;
           projectId: string;
           status: string;
-          activity: string | null;
-          attentionLevel: string;
         }> = data.sessions ?? [];
 
         // Build card data from sessions

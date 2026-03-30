@@ -16,6 +16,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   type GlobalConfig,
   type GlobalProjectEntry,
+  loadGlobalConfig,
   saveGlobalConfig,
   findGlobalConfigPath,
   isOldConfigFormat,
@@ -108,8 +109,10 @@ export function migrateToMultiProject(configPath: string): MigrationResult {
 
   const oldProjects = parsed["projects"] as Record<string, Record<string, unknown>>;
 
-  // 2. Build global config
-  const globalConfig: GlobalConfig = {
+  // 2. Build global config — load existing one first to avoid overwriting
+  // projects registered by previous migrations from other project dirs.
+  const existing = loadGlobalConfig();
+  const globalConfig: GlobalConfig = existing ?? {
     port: (parsed["port"] as number) ?? 3000,
     terminalPort: parsed["terminalPort"] as number | undefined,
     directTerminalPort: parsed["directTerminalPort"] as number | undefined,

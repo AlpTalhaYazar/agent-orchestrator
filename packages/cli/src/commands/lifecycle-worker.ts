@@ -25,7 +25,14 @@ function readAllPid(): number | null {
 }
 
 function isProcessRunning(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: unknown) {
+    // EPERM means the process exists but we lack permission to signal it
+    if (err && typeof err === "object" && "code" in err && err.code === "EPERM") return true;
+    return false;
+  }
 }
 
 function writeAllPid(pid: number): void {
