@@ -8,7 +8,7 @@
  * This is a one-way migration. The old format is not supported after migration.
  */
 
-import { readFileSync, writeFileSync, existsSync, symlinkSync, readdirSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, symlinkSync, readdirSync, renameSync, realpathSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -132,6 +132,21 @@ export function migrateToMultiProject(configPath: string): MigrationResult {
   // Identity fields that should NOT be in local config
   const identityFields = new Set(["name", "path", "sessionPrefix"]);
 
+  // Compute the old storage hash BEFORE renaming, since generateConfigHash
+  // calls realpathSync which requires the file to exist.
+  const oldStorageHash = generateConfigHash(configPath);
+
+  // Compute the runtime hash that getProjectBaseDir(globalConfigPath, ...)
+  // will produce after migration. generateConfigHash does:
+  //   realpathSync(configPath) → dirname → sha256 → slice(0,12)
+  // The global config will be at ~/.agent-orchestrator/config.yaml,
+  // so dirname is the resolved ~/.agent-orchestrator/ path.
+  const globalDir = resolve(homedir(), ".agent-orchestrator");
+  const resolvedGlobalDir = existsSync(globalDir)
+    ? realpathSync(globalDir)
+    : globalDir;
+  const runtimeHash = createHash("sha256").update(resolvedGlobalDir).digest("hex").slice(0, 12);
+
   // Backup the original config BEFORE writing any flat local configs.
   // This prevents overwriting the original when configPath is inside a
   // project directory (the common single-project case).
@@ -204,22 +219,13 @@ export function migrateToMultiProject(configPath: string): MigrationResult {
     }
 
     // 4. Create symlink from old storage dir to runtime storage dir.
-    // The old dir uses generateConfigHash(originalConfigPath).
-    // After migration, runtime uses generateConfigHash(globalConfigPath).
-    // We symlink old → runtime so existing session data is found.
-    const oldHash = generateConfigHash(backupPath.replace(/\.pre-multiproject\.bak$/, ""));
+    // oldStorageHash and runtimeHash are precomputed before the backup rename.
     const oldProjectBasename = generateProjectId(projectPath);
-    // generateConfigHash uses dirname(resolved path of config file).
-    // The global config lives at ~/.agent-orchestrator/config.yaml,
-    // so dirname is ~/.agent-orchestrator/.
-    const globalDir = resolve(homedir(), ".agent-orchestrator");
-    const runtimeHash = createHash("sha256").update(globalDir).digest("hex").slice(0, 12);
-
-    const dataDir = globalDir;
-    const oldDir = join(dataDir, `${oldHash}-${oldProjectBasename}`);
+    const dataDir = resolve(homedir(), ".agent-orchestrator");
+    const oldDir = join(dataDir, `${oldStorageHash}-${oldProjectBasename}`);
     const runtimeDir = join(dataDir, `${runtimeHash}-${oldProjectBasename}`);
 
-    if (oldHash !== runtimeHash && existsSync(oldDir)) {
+    if (oldStorageHash !== runtimeHash && existsSync(oldDir)) {
       try {
         if (!existsSync(runtimeDir)) {
           // Create symlink: runtime path → old data (so runtime finds existing data)
