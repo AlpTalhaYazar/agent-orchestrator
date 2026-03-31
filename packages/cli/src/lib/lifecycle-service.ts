@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { getProjectBaseDir, type OrchestratorConfig } from "@composio/ao-core";
+import { getProjectBaseDir, getGlobalDataDir, type OrchestratorConfig } from "@composio/ao-core";
 
 const LIFECYCLE_PID_FILE = "lifecycle-worker.pid";
 const LIFECYCLE_LOG_FILE = "lifecycle-worker.log";
@@ -110,14 +110,21 @@ export function getLifecycleWorkerStatus(
 ): LifecycleWorkerStatus {
   const pidFile = getLifecyclePidFile(config, projectId);
   const logFile = getLifecycleLogFile(config, projectId);
-  const pid = readPid(pidFile);
 
+  // Check per-project worker first
+  const pid = readPid(pidFile);
   if (pid !== null && isProcessRunning(pid)) {
     return { running: true, pid, pidFile, logFile };
   }
-
   if (pid !== null) {
     clearLifecycleWorkerPid(config, projectId, pid);
+  }
+
+  // Also check poll-all worker — if running, it covers this project
+  const allPidFile = join(getGlobalDataDir(), "lifecycle-all.pid");
+  const allPid = readPid(allPidFile);
+  if (allPid !== null && isProcessRunning(allPid)) {
+    return { running: true, pid: allPid, pidFile: allPidFile, logFile };
   }
 
   return { running: false, pid: null, pidFile, logFile };
