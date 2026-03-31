@@ -15,6 +15,7 @@ import { registerVerify } from "./commands/verify.js";
 import { registerDoctor } from "./commands/doctor.js";
 import { registerUpdate } from "./commands/update.js";
 import { registerSetup } from "./commands/setup.js";
+import { registerPlugin } from "./commands/plugin.js";
 import { registerRemoveProject } from "./commands/remove-project.js";
 import { getConfigInstruction } from "./lib/config-instruction.js";
 
@@ -41,6 +42,7 @@ registerVerify(program);
 registerDoctor(program);
 registerUpdate(program);
 registerSetup(program);
+registerPlugin(program);
 registerRemoveProject(program);
 
 program
