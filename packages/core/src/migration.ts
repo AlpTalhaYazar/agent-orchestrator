@@ -28,7 +28,6 @@ import type {
 import {
   type GlobalConfig,
   type GlobalProjectEntry,
-  loadGlobalConfig,
   saveGlobalConfig,
   findGlobalConfigPath,
   isOldConfigFormat,
@@ -124,7 +123,19 @@ export function migrateToMultiProject(configPath: string): MigrationResult {
 
   // 2. Build global config — load existing one first to avoid overwriting
   // projects registered by previous migrations from other project dirs.
-  const existing = loadGlobalConfig();
+  // Use raw YAML load instead of loadGlobalConfig() to avoid triggering
+  // migrateInlineShadowsToFiles() which could interfere with this migration.
+  const globalPath = findGlobalConfigPath();
+  let existing: GlobalConfig | null = null;
+  if (existsSync(globalPath)) {
+    try {
+      const existingRaw = readFileSync(globalPath, "utf-8");
+      const existingParsed = parseYaml(existingRaw);
+      existing = existingParsed as GlobalConfig;
+    } catch {
+      // Corrupted global config — start fresh
+    }
+  }
   let globalConfig: GlobalConfig = existing ?? {
     port: (parsed["port"] as number) ?? 3000,
     terminalPort: parsed["terminalPort"] as number | undefined,
@@ -201,7 +212,7 @@ export function migrateToMultiProject(configPath: string): MigrationResult {
     // Register identity-only entry in global config
     const globalEntry: GlobalProjectEntry = {
       name: String(projectRaw["name"] ?? configKey),
-      path: projectRaw["path"] as string,
+      path: String(projectRaw["path"] ?? ""),
     };
     globalConfig = registerProject(globalConfig, projectId, globalEntry);
     registeredProjects.push(projectId);

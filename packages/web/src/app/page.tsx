@@ -23,8 +23,9 @@ export default async function Home(props: { searchParams: Promise<{ project?: st
   const searchParams = await props.searchParams;
   const projects = getAllProjects();
 
-  // If no project filter and multiple projects, show portfolio
-  if (!searchParams.project && projects.length > 1) {
+  // If no project filter and not exactly one project, show portfolio
+  // (covers both 0 projects with "no projects" message and 2+ with cards)
+  if (!searchParams.project && projects.length !== 1) {
     const initialCards = projects.map((p) => ({
       id: p.id,
       name: p.name,

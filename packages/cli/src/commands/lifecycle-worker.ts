@@ -2,8 +2,7 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
-import { createCorrelationId, createProjectObserver, loadConfig } from "@composio/ao-core";
+import { createCorrelationId, createProjectObserver, loadConfig, getGlobalDataDir } from "@composio/ao-core";
 import { getLifecycleManager } from "../lib/create-session-manager.js";
 import {
   clearLifecycleWorkerPid,
@@ -13,7 +12,8 @@ import {
 
 // Stable PID file for poll-all mode, located in the global data dir
 // rather than under a project dir (which would be unstable across config changes).
-const ALL_PROJECTS_PID_FILE = join(homedir(), ".agent-orchestrator", "lifecycle-all.pid");
+// Uses getGlobalDataDir() to respect XDG_DATA_HOME and other env overrides.
+const ALL_PROJECTS_PID_FILE = join(getGlobalDataDir(), "lifecycle-all.pid");
 
 function readAllPid(): number | null {
   try {

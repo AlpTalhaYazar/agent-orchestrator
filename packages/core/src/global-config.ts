@@ -281,12 +281,22 @@ export function loadGlobalConfig(): GlobalConfig | null {
     return null;
   }
 
-  // One-time migration: move inline shadows to per-project files
+  // One-time migration: move inline shadows to per-project files.
+  // Only triggers if inline behavior fields are actually detected.
   migrateInlineShadowsToFiles();
 
   const raw = readFileSync(path, "utf-8");
   const parsed = parseYaml(raw);
-  const validated = GlobalConfigSchema.parse(parsed);
+
+  let validated: z.infer<typeof GlobalConfigSchema>;
+  try {
+    validated = GlobalConfigSchema.parse(parsed);
+  } catch (err) {
+    const detail = err instanceof z.ZodError
+      ? err.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")
+      : String(err);
+    throw new Error(`Invalid global config at ${path}:\n${detail}`, { cause: err });
+  }
 
   // Clone before mutating to avoid modifying Zod's parse output directly
   const config = structuredClone(validated);

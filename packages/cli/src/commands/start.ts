@@ -44,6 +44,8 @@ import {
   buildEffectiveConfig,
   generateProjectId,
   expandHome,
+  saveShadowFile,
+  loadShadowFile,
   type OrchestratorConfig,
   type ProjectConfig,
   type ParsedRepoUrl,
@@ -1308,26 +1310,28 @@ export function registerStart(program: Command): void {
 
                 // Register in global config + create shadow from existing project
                 if (config.globalConfigPath) {
-                  const { loadGlobalConfig: reloadGlobal, registerProject: regProj, saveGlobalConfig: saveGlobal, saveShadowFile: saveShadow, loadShadowFile: loadShadow } = await import("@composio/ao-core");
-                  let gc = reloadGlobal();
+                  let gc = loadGlobalConfig();
                   if (gc) {
                     const origProject = config.projects[projectId];
-                    gc = regProj(gc, newId, { name: newId, path: origProject.path });
-                    saveGlobal(gc);
+                    gc = registerProject(gc, newId, { name: newId, path: origProject.path });
+                    saveGlobalConfig(gc);
                     // Copy shadow from original project
-                    const origShadow = loadShadow(projectId);
+                    const origShadow = loadShadowFile(projectId);
                     if (origShadow) {
-                      saveShadow(newId, origShadow);
+                      saveShadowFile(newId, origShadow);
                     }
                   }
                 } else {
                   // Legacy single-file mode: edit YAML directly
                   const rawYaml = readFileSync(config.configPath, "utf-8");
                   const rawConfig = yamlParse(rawYaml);
-                  rawConfig.projects[newId] = {
-                    ...rawConfig.projects[projectId],
-                    sessionPrefix: generateSessionPrefix(newId),
-                  };
+                  if (!rawConfig.projects) rawConfig.projects = {};
+                  if (rawConfig.projects[projectId]) {
+                    rawConfig.projects[newId] = {
+                      ...rawConfig.projects[projectId],
+                      sessionPrefix: generateSessionPrefix(newId),
+                    };
+                  }
                   writeFileSync(config.configPath, yamlStringify(rawConfig, { indent: 2 }));
                 }
                 console.log(chalk.green(`\n✓ New orchestrator "${newId}" added to config\n`));
