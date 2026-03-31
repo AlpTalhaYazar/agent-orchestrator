@@ -11,7 +11,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve, basename } from "node:path";
+import { resolve, basename, dirname } from "node:path";
 import { cwd } from "node:process";
 import chalk from "chalk";
 import ora from "ora";
@@ -137,17 +137,26 @@ async function handleMultiProjectStart(
   let projectId = matchProjectByCwd(globalConfig, resolvedDir);
 
   if (!projectId) {
-    // Not registered yet — check if there's a local config (hybrid) or register as global-only
-    const localPath = findLocalConfigPath(resolvedDir);
+    // Not registered yet — walk up from CWD to find a local config.
+    // This handles running `ao start` from a subdirectory (e.g., ~/project/src).
+    let searchDir = resolvedDir;
+    let localPath: string | null = null;
+    while (searchDir !== dirname(searchDir)) {
+      localPath = findLocalConfigPath(searchDir);
+      if (localPath) break;
+      searchDir = dirname(searchDir);
+    }
+    // Use the directory where the config was found as the project root
+    const projectRoot = localPath ? searchDir : resolvedDir;
 
     if (localPath) {
       // Has local config → auto-register in hybrid mode
-      const derivedId = generateSessionPrefix(generateProjectId(resolvedDir));
+      const derivedId = generateSessionPrefix(generateProjectId(projectRoot));
 
       // Check for collision
       if (globalConfig.projects[derivedId]) {
         const existing = globalConfig.projects[derivedId];
-        if (resolve(expandHome(existing.path)) !== resolvedDir) {
+        if (resolve(expandHome(existing.path)) !== projectRoot) {
           // Collision with different project — auto-resolve with suffix
           let suffix = 2;
           let altId = `${derivedId}${suffix}`;
@@ -167,10 +176,10 @@ async function handleMultiProjectStart(
         projectId = derivedId;
       }
 
-      // Register project
+      // Register project using the discovered root, not the CWD
       const entry: GlobalProjectEntry = {
-        name: basename(resolvedDir),
-        path: resolvedDir,
+        name: basename(projectRoot),
+        path: projectRoot,
       };
       globalConfig = registerProject(globalConfig, projectId, entry);
 
@@ -1398,17 +1407,15 @@ export function registerStart(program: Command): void {
                 } while (existingIds.has(newId));
 
                 // Register in global config + create shadow from existing project
-                if (config.globalConfigPath) {
-                  let gc = loadGlobalConfig();
-                  if (gc) {
-                    const origProject = config.projects[projectId];
-                    gc = registerProject(gc, newId, { name: newId, path: origProject.path });
-                    saveGlobalConfig(gc);
-                    // Copy shadow from original project
-                    const origShadow = loadShadowFile(projectId);
-                    if (origShadow) {
-                      saveShadowFile(newId, origShadow);
-                    }
+                const gc = config.globalConfigPath ? loadGlobalConfig() : null;
+                if (gc) {
+                  const origProject = config.projects[projectId];
+                  const updated = registerProject(gc, newId, { name: newId, path: origProject.path });
+                  saveGlobalConfig(updated);
+                  // Copy shadow from original project
+                  const origShadow = loadShadowFile(projectId);
+                  if (origShadow) {
+                    saveShadowFile(newId, origShadow);
                   }
                 } else {
                   // Legacy single-file mode: edit YAML directly
