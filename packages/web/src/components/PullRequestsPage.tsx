@@ -7,6 +7,7 @@ import {
   type DashboardSession,
   type DashboardPR,
   type DashboardOrchestratorLink,
+  getAttentionLevel,
 } from "@/lib/types";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { ProjectSidebar } from "./ProjectSidebar";
@@ -35,7 +36,14 @@ export function PullRequestsPage({
   orchestrators,
 }: PullRequestsPageProps) {
   const orchestratorLinks = orchestrators ?? EMPTY_ORCHESTRATORS;
-  const { sessions, sseAttentionLevels } = useSessionEvents(initialSessions, null, projectId);
+  const initialAttentionLevels = useMemo(() => {
+    const levels: Record<string, ReturnType<typeof getAttentionLevel>> = {};
+    for (const s of initialSessions) {
+      levels[s.id] = getAttentionLevel(s);
+    }
+    return levels;
+  }, [initialSessions]);
+  const { sessions, sseAttentionLevels } = useSessionEvents(initialSessions, null, projectId, initialAttentionLevels);
   const searchParams = useSearchParams();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

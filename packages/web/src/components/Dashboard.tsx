@@ -72,10 +72,18 @@ function DashboardInner({
   orchestrators,
 }: DashboardProps) {
   const orchestratorLinks = orchestrators ?? EMPTY_ORCHESTRATORS;
+  const initialAttentionLevels = useMemo(() => {
+    const levels: Record<string, AttentionLevel> = {};
+    for (const s of initialSessions) {
+      levels[s.id] = getAttentionLevel(s);
+    }
+    return levels;
+  }, [initialSessions]);
   const { sessions, globalPause, connectionStatus, sseAttentionLevels } = useSessionEvents(
     initialSessions,
     initialGlobalPause,
     projectId,
+    initialAttentionLevels,
   );
   const searchParams = useSearchParams();
   const activeSessionId = searchParams.get("session") ?? undefined;

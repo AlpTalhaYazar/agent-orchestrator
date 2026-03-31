@@ -665,10 +665,20 @@ describe("useSessionEvents", () => {
   });
 
   describe("sseAttentionLevels", () => {
-    it("starts with empty attention levels", () => {
+    it("starts with empty attention levels when no initial levels provided", () => {
       const sessions = makeSessions(2);
       const { result } = renderHook(() => useSessionEvents(sessions));
       expect(result.current.sseAttentionLevels).toEqual({});
+    });
+
+    it("seeds attention levels from initialAttentionLevels parameter", () => {
+      const sessions = makeSessions(2);
+      const initialLevels = { "session-0": "working" as const, "session-1": "respond" as const };
+      const { result } = renderHook(() => useSessionEvents(sessions, null, undefined, initialLevels));
+      expect(result.current.sseAttentionLevels).toEqual({
+        "session-0": "working",
+        "session-1": "respond",
+      });
     });
 
     it("populates attention levels from SSE snapshot", () => {

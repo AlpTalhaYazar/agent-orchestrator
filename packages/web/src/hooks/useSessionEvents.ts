@@ -20,6 +20,7 @@ type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
 /** Server-computed attention levels from the latest SSE snapshot. */
 export type SSEAttentionMap = Readonly<Record<string, AttentionLevel>>;
 
+
 interface State {
   sessions: DashboardSession[];
   globalPause: GlobalPauseState | null;
@@ -36,7 +37,7 @@ type Action =
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "reset":
-      return { ...state, sessions: action.sessions, globalPause: action.globalPause, sseAttentionLevels: state.sseAttentionLevels };
+      return { ...state, sessions: action.sessions, globalPause: action.globalPause };
     case "setConnection":
       return { ...state, connectionStatus: action.status };
     case "snapshot": {
@@ -96,12 +97,13 @@ export function useSessionEvents(
   initialSessions: DashboardSession[],
   initialGlobalPause?: GlobalPauseState | null,
   project?: string,
+  initialAttentionLevels?: SSEAttentionMap,
 ): State {
   const [state, dispatch] = useReducer(reducer, {
     sessions: initialSessions,
     globalPause: initialGlobalPause ?? null,
     connectionStatus: "connected" as ConnectionStatus,
-    sseAttentionLevels: {} as SSEAttentionMap,
+    sseAttentionLevels: initialAttentionLevels ?? ({} as SSEAttentionMap),
   });
   const sessionsRef = useRef(state.sessions);
   const refreshingRef = useRef(false);
