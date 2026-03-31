@@ -1,5 +1,6 @@
 import {
   DEFAULT_READY_THRESHOLD_MS,
+  DEFAULT_ACTIVE_WINDOW_MS,
   shellEscape,
   readLastJsonlEntry,
   normalizeAgentPermissionMode,
@@ -467,6 +468,20 @@ function createCodexAgent(): Agent {
       const activityResult = await readLastActivityEntry(session.workspacePath);
       const activityState = checkActivityLogState(activityResult);
       if (activityState) return activityState;
+
+      // 3. Fallback: use JSONL file mtime for active/ready/idle when native session
+      //    file is missing (e.g. early startup before Codex writes its first entry).
+      if (activityResult) {
+        const activeWindowMs = Math.min(DEFAULT_ACTIVE_WINDOW_MS, threshold);
+        const ageMs = Math.max(0, Date.now() - activityResult.modifiedAt.getTime());
+        if (ageMs <= activeWindowMs) {
+          return { state: "active", timestamp: activityResult.modifiedAt };
+        }
+        if (ageMs <= threshold) {
+          return { state: "ready", timestamp: activityResult.modifiedAt };
+        }
+        return { state: "idle", timestamp: activityResult.modifiedAt };
+      }
 
       return null;
     },
