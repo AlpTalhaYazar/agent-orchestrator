@@ -1037,8 +1037,8 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     const cachedData = prEnrichmentCache.get(prKey);
 
     let hasConflicts: boolean;
-    if (cachedData) {
-      hasConflicts = cachedData.hasConflicts === true;
+    if (cachedData && cachedData.hasConflicts !== undefined) {
+      hasConflicts = cachedData.hasConflicts;
     } else {
       try {
         const mergeReadiness = await scm.getMergeability(session.pr);
