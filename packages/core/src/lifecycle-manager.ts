@@ -33,6 +33,7 @@ import {
   type EventPriority,
   type ProjectConfig as _ProjectConfig,
   type PREnrichmentData,
+  type CICheck,
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
 import { getSessionsDir } from "./paths.js";
@@ -852,7 +853,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
    * Format CI check failures into a human-readable message for the agent.
    * Includes check names, statuses, and links for debugging.
    */
-  function formatCIFailureMessage(failedChecks: Array<{ name: string; status: string; url?: string; conclusion?: string }>): string {
+  function formatCIFailureMessage(failedChecks: CICheck[]): string {
     const lines = [
       "CI checks are failing on your PR. Here are the failed checks:",
       "",
@@ -915,7 +916,7 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     }
 
     // Fetch individual CI checks for failure details
-    let checks: Array<{ name: string; status: string; url?: string; conclusion?: string }>;
+    let checks: CICheck[];
     try {
       checks = await scm.getCIChecks(session.pr);
     } catch {
