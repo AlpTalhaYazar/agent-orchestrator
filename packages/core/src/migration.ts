@@ -112,7 +112,12 @@ export function buildEffectiveConfig(
     projects,
     projectOrder: globalConfig.projectOrder,
     notifiers: {},
-    notificationRouting: {} as Record<EventPriority, string[]>,
+    notificationRouting: {
+      urgent: ["desktop", "composio"],
+      action: ["desktop", "composio"],
+      warning: ["composio"],
+      info: ["composio"],
+    } as Record<EventPriority, string[]>,
     reactions: {},
     plugins: globalConfig.plugins as OrchestratorConfig["plugins"],
   };

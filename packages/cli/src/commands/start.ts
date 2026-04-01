@@ -31,13 +31,9 @@ import {
   ConfigNotFoundError,
   // Multi-project imports
   resolveMultiProjectStart,
-  loadGlobalConfig,
-  saveGlobalConfig,
-  registerProject,
   findLocalConfigPath,
   saveShadowFile,
   loadShadowFile,
-  filterSecrets,
   type OrchestratorConfig,
   type ProjectConfig,
   type ParsedRepoUrl,
@@ -1287,30 +1283,8 @@ export function registerStart(program: Command): void {
                   newId = `${projectId}-${suffix}`;
                 } while (existingIds.has(newId));
 
-                // Register in global config + create shadow from existing project
-                const gc = config.globalConfigPath ? loadGlobalConfig() : null;
-                if (gc) {
-                  const origProject = config.projects[projectId];
-                  const updated = registerProject(gc, newId, { name: newId, path: origProject.path });
-                  saveGlobalConfig(updated);
-                  // Copy shadow from original project — try shadow file first,
-                  // fall back to in-memory config for hybrid projects without shadow
-                  let shadowToCopy = loadShadowFile(projectId);
-                  if (!shadowToCopy) {
-                    // Build shadow from in-memory effective config, filtering secrets
-                    const raw: Record<string, unknown> = {
-                      repo: origProject.repo,
-                      defaultBranch: origProject.defaultBranch,
-                      ...(origProject.agent ? { agent: origProject.agent } : {}),
-                      ...(origProject.runtime ? { runtime: origProject.runtime } : {}),
-                      ...(origProject.workspace ? { workspace: origProject.workspace } : {}),
-                      ...(origProject.agentConfig ? { agentConfig: origProject.agentConfig } : {}),
-                    };
-                    shadowToCopy = filterSecrets(raw, [], "project");
-                  }
-                  saveShadowFile(newId, shadowToCopy);
-                } else {
-                  // Legacy single-file mode: edit YAML directly
+                if (!config.globalConfigPath) {
+                  // Legacy single-file mode: add a new project entry
                   const rawYaml = readFileSync(config.configPath, "utf-8");
                   const rawConfig = yamlParse(rawYaml);
                   if (!rawConfig.projects) rawConfig.projects = {};
@@ -1321,11 +1295,13 @@ export function registerStart(program: Command): void {
                     };
                   }
                   writeFileSync(config.configPath, yamlStringify(rawConfig, { indent: 2 }));
+                  console.log(chalk.green(`\n✓ New orchestrator "${newId}" added to config\n`));
+                  config = loadConfig();
+                  projectId = newId;
+                  project = config.projects[newId];
                 }
-                console.log(chalk.green(`\n✓ New orchestrator "${newId}" added to config\n`));
-                config = loadConfig();
-                projectId = newId;
-                project = config.projects[newId];
+                // In multi-project mode, just start a new orchestrator session
+                // for the same project — no need to create a duplicate project entry.
                 // Continue to startup below
               } else if (choice === "restart") {
                 try { process.kill(running.pid, "SIGTERM"); } catch { /* already dead */ }
