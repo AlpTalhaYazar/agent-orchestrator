@@ -930,7 +930,7 @@ async function runStartup(
   config: OrchestratorConfig,
   projectId: string,
   project: ProjectConfig,
-  opts?: { dashboard?: boolean; orchestrator?: boolean; rebuild?: boolean },
+  opts?: { dashboard?: boolean; orchestrator?: boolean; rebuild?: boolean; orchestratorSuffix?: string },
 ): Promise<number> {
   // Ensure tmux is available before doing anything — covers all entry paths
   // (normal start, URL start, retry with existing config)
@@ -954,7 +954,9 @@ async function runStartup(
     }
   }
 
-  const sessionId = `${project.sessionPrefix}-orchestrator`;
+  const sessionId = opts?.orchestratorSuffix
+    ? `${project.sessionPrefix}-orchestrator-${opts.orchestratorSuffix}`
+    : `${project.sessionPrefix}-orchestrator`;
   const shouldStartLifecycle = opts?.dashboard !== false || opts?.orchestrator !== false;
   let lifecycleStatus: Awaited<ReturnType<typeof ensureLifecycleWorker>> | null = null;
   let port = config.port ?? DEFAULT_PORT;
@@ -1028,7 +1030,11 @@ async function runStartup(
     try {
       spinner.start("Creating orchestrator session");
       const systemPrompt = generateOrchestratorPrompt({ config, projectId, project });
-      const session = await sm.spawnOrchestrator({ projectId, systemPrompt });
+      const session = await sm.spawnOrchestrator({
+        projectId,
+        systemPrompt,
+        sessionSuffix: opts?.orchestratorSuffix,
+      });
       if (session.runtimeHandle?.id) {
         tmuxTarget = session.runtimeHandle.id;
       }
@@ -1272,24 +1278,27 @@ export function registerStart(program: Command): void {
                 openUrl(url);
                 process.exit(0);
               } else if (choice === "new") {
-                // Generate unique orchestrator: same project, new session.
-                // Check against existing project IDs (which equal session prefixes
-                // in multi-project mode) to avoid collisions.
-                const existingIds = new Set(Object.keys(config.projects));
-
-                let newId: string;
-                do {
-                  const suffix = Math.random().toString(36).slice(2, 6);
-                  newId = `${projectId}-${suffix}`;
-                } while (existingIds.has(newId));
+                // Spawn an additional orchestrator for the same project.
+                // Find the next available suffix (2, 3, 4...) by checking existing sessions.
+                const sm = await getSessionManager(config);
+                const sessions = await sm.list(projectId);
+                const orchPrefix = `${project.sessionPrefix}-orchestrator`;
+                let suffix = 2;
+                while (sessions.some((s) => s.id === `${orchPrefix}-${suffix}`)) suffix++;
 
                 if (config.globalConfigPath) {
-                  // Multi-project mode: force a fresh orchestrator session
-                  // by overriding the strategy to "delete" (kills old, creates new)
-                  project = { ...project, orchestratorSessionStrategy: "delete" };
-                  console.log(chalk.green(`\n✓ Will create new orchestrator for "${projectId}"\n`));
+                  // Multi-project mode: pass suffix to runStartup
+                  opts = { ...opts, orchestratorSuffix: String(suffix) } as typeof opts;
+                  console.log(chalk.green(`\n✓ Starting orchestrator-${suffix} for "${projectId}"\n`));
                 } else {
-                  // Legacy single-file mode: add a new project entry
+                  // Legacy single-file mode: add a new project entry with different prefix
+                  const existingIds = new Set(Object.keys(config.projects));
+                  let newId: string;
+                  do {
+                    const rnd = Math.random().toString(36).slice(2, 6);
+                    newId = `${projectId}-${rnd}`;
+                  } while (existingIds.has(newId));
+
                   const rawYaml = readFileSync(config.configPath, "utf-8");
                   const rawConfig = yamlParse(rawYaml);
                   if (!rawConfig.projects) rawConfig.projects = {};

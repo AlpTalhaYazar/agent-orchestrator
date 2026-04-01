@@ -202,6 +202,8 @@ export interface SessionSpawnConfig {
 export interface OrchestratorSpawnConfig {
   projectId: string;
   systemPrompt?: string;
+  /** Optional suffix for additional orchestrators, e.g. "2" → "{prefix}-orchestrator-2" */
+  sessionSuffix?: string;
 }
 
 // =============================================================================
