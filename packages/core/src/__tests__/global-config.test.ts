@@ -88,9 +88,6 @@ describe("loadGlobalConfig / saveGlobalConfig", () => {
       readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: { test: { name: "Test", path: "/tmp/test" } },
-      notifiers: {},
-      notificationRouting: {},
-      reactions: {},
     };
     saveGlobalConfig(config);
     const loaded = loadGlobalConfig();
@@ -114,9 +111,6 @@ describe("registerProject / unregisterProject", () => {
       readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: {},
-      notifiers: {},
-      notificationRouting: {},
-      reactions: {},
     };
     const updated = registerProject(original, "ao", { name: "AO", path: "/tmp/ao" });
     expect(updated.projects["ao"]).toBeDefined();
@@ -131,9 +125,6 @@ describe("registerProject / unregisterProject", () => {
       readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: { ao: { name: "AO", path: "/tmp/ao" } },
-      notifiers: {},
-      notificationRouting: {},
-      reactions: {},
     };
     const updated = unregisterProject(config, "ao");
     expect(updated.projects["ao"]).toBeUndefined();
@@ -180,9 +171,6 @@ describe("syncShadow", () => {
       readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: { ao: { name: "AO", path: "/tmp/ao" } },
-      notifiers: {},
-      notificationRouting: {},
-      reactions: {},
     };
 
     const localConfig = { repo: "org/ao", agent: "claude-code", defaultBranch: "main" } as any;
@@ -205,9 +193,6 @@ describe("syncShadow", () => {
       readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: { ao: { name: "AO", path: "/tmp/ao" } },
-      notifiers: {},
-      notificationRouting: {},
-      reactions: {},
     };
 
     const localConfig = { repo: "org/ao", apiToken: "secret123", defaultBranch: "main" } as any;
@@ -224,9 +209,6 @@ describe("syncShadow", () => {
       readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: {},
-      notifiers: {},
-      notificationRouting: {},
-      reactions: {},
     };
     expect(() => syncShadow(config, "missing", {} as any)).toThrow(/not found/);
   });
@@ -238,7 +220,6 @@ describe("matchProjectByCwd", () => {
       port: 3000, readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: { ao: { name: "AO", path: testDir } },
-      notifiers: {}, notificationRouting: {}, reactions: {},
     };
     expect(matchProjectByCwd(config, testDir)).toBe("ao");
   });
@@ -250,7 +231,6 @@ describe("matchProjectByCwd", () => {
       port: 3000, readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: { ao: { name: "AO", path: testDir } },
-      notifiers: {}, notificationRouting: {}, reactions: {},
     };
     expect(matchProjectByCwd(config, subDir)).toBe("ao");
   });
@@ -265,7 +245,6 @@ describe("matchProjectByCwd", () => {
         parent: { name: "Parent", path: testDir },
         sub: { name: "Sub", path: join(testDir, "packages", "sub") },
       },
-      notifiers: {}, notificationRouting: {}, reactions: {},
     };
     expect(matchProjectByCwd(config, subDir)).toBe("sub");
   });
@@ -275,7 +254,6 @@ describe("matchProjectByCwd", () => {
       port: 3000, readyThresholdMs: 300000,
       defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
       projects: { ao: { name: "AO", path: "/some/other/path" } },
-      notifiers: {}, notificationRouting: {}, reactions: {},
     };
     expect(matchProjectByCwd(config, testDir)).toBeNull();
   });

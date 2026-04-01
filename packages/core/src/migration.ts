@@ -15,7 +15,6 @@ import type {
   RoleAgentConfig,
   ReactionConfig,
   DefaultPlugins,
-  NotifierConfig,
   EventPriority,
 } from "./types.js";
 import {
@@ -112,9 +111,9 @@ export function buildEffectiveConfig(
     defaults: globalConfig.defaults as DefaultPlugins,
     projects,
     projectOrder: globalConfig.projectOrder,
-    notifiers: globalConfig.notifiers as Record<string, NotifierConfig>,
-    notificationRouting: globalConfig.notificationRouting as Record<EventPriority, string[]>,
-    reactions: globalConfig.reactions as Record<string, ReactionConfig>,
+    notifiers: {},
+    notificationRouting: {} as Record<EventPriority, string[]>,
+    reactions: {},
     plugins: globalConfig.plugins as OrchestratorConfig["plugins"],
   };
 }

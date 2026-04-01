@@ -48,9 +48,6 @@ function setupGlobalConfig(projects: Record<string, { name: string; path: string
     readyThresholdMs: 300000,
     defaults: { runtime: "tmux", agent: "claude-code", workspace: "worktree", notifiers: [] },
     projects,
-    notifiers: {},
-    notificationRouting: {},
-    reactions: {},
   };
   saveGlobalConfig(config);
 }

@@ -92,21 +92,6 @@ const GlobalConfigSchema = z.object({
   projects: z.record(GlobalProjectEntrySchema).default({}),
   /** Display order for projects in sidebar/portfolio */
   projectOrder: z.array(z.string()).optional(),
-  /** Notification channel configs */
-  notifiers: z
-    .record(z.object({ plugin: z.string() }).passthrough())
-    .default({}),
-  /** Notification routing by priority */
-  notificationRouting: z
-    .record(z.array(z.string()))
-    .default({
-      urgent: ["desktop", "composio"],
-      action: ["desktop", "composio"],
-      warning: ["composio"],
-      info: ["composio"],
-    }),
-  /** Default reaction configs */
-  reactions: z.record(z.any()).default({}),
   /** Installed external plugins */
   plugins: z.array(z.any()).optional(),
 });
