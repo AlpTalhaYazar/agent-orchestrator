@@ -581,8 +581,20 @@ export function loadConfigWithPath(configPath?: string): {
     throw new ConfigNotFoundError();
   }
 
-  const config = loadConfigFromFile(path);
-  return { config, path };
+  try {
+    const config = loadConfigFromFile(path);
+    return { config, path };
+  } catch (err) {
+    // Same ZodError fallback as loadConfig — flat local configs or global config
+    // paths need the multi-project pipeline.
+    if (!(err instanceof z.ZodError)) throw err;
+
+    const effective = loadFromGlobalConfig();
+    if (effective) {
+      return { config: effective, path: findGlobalConfigPath() };
+    }
+    throw err;
+  }
 }
 
 /** Validate a raw config object */
