@@ -1255,7 +1255,7 @@ export function registerStart(program: Command): void {
                 }
               }
               config = loadedConfig;
-              ({ projectId, project } = await resolveProject(config, projectArg));
+              ({ projectId, project } = await resolveProject(config));
             }
           }
 
@@ -1316,8 +1316,15 @@ export function registerStart(program: Command): void {
                     writeFileSync(config.configPath, yamlStringify(rawConfig, { indent: 2 }));
                     console.log(chalk.green(`\n✓ New orchestrator "${newId}" added to config\n`));
                     config = loadConfig();
-                    projectId = newId;
-                    project = config.projects[newId];
+                    const reloadedProject = config.projects[newId];
+                    if (reloadedProject) {
+                      projectId = newId;
+                      project = reloadedProject;
+                    } else {
+                      // Config reload didn't surface the new entry — fall back to suffix
+                      opts = { ...opts, orchestratorSuffix: String(suffix) };
+                      console.log(chalk.green(`\n✓ Starting orchestrator-${suffix} for "${projectId}"\n`));
+                    }
                   } else {
                     // Project not found in raw YAML (unexpected — fall back to suffix approach)
                     opts = { ...opts, orchestratorSuffix: String(suffix) };
