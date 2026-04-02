@@ -1462,22 +1462,42 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     const launchCommand = plugins.agent.getLaunchCommand(agentLaunchConfig);
     const environment = plugins.agent.getEnvironment(agentLaunchConfig);
 
-    const handle = await plugins.runtime.create({
-      sessionId: tmuxName ?? sessionId,
-      workspacePath,
-      launchCommand,
-      environment: {
-        ...environment,
-        AO_SESSION: sessionId,
-        AO_DATA_DIR: sessionsDir,
-        AO_SESSION_NAME: sessionId,
-        ...(tmuxName && { AO_TMUX_NAME: tmuxName }),
-        AO_CALLER_TYPE: "orchestrator",
-        AO_PROJECT_ID: orchestratorConfig.projectId,
-        AO_CONFIG_PATH: config.configPath,
-        ...(config.port !== undefined && config.port !== null && { AO_PORT: String(config.port) })
-      },
-    });
+    // Create runtime — clean up worktree and metadata on failure
+    let handle: RuntimeHandle;
+    try {
+      handle = await plugins.runtime.create({
+        sessionId: tmuxName ?? sessionId,
+        workspacePath,
+        launchCommand,
+        environment: {
+          ...environment,
+          AO_SESSION: sessionId,
+          AO_DATA_DIR: sessionsDir,
+          AO_SESSION_NAME: sessionId,
+          ...(tmuxName && { AO_TMUX_NAME: tmuxName }),
+          AO_CALLER_TYPE: "orchestrator",
+          AO_PROJECT_ID: orchestratorConfig.projectId,
+          AO_CONFIG_PATH: config.configPath,
+          ...(config.port !== undefined && config.port !== null && { AO_PORT: String(config.port) })
+        },
+      });
+    } catch (err) {
+      // Destroy the worktree we explicitly created — no need for the
+      // shouldDestroyWorkspacePath safety guard here since we own this worktree.
+      if (orchestratorConfig.useWorktree && plugins.workspace) {
+        try {
+          await plugins.workspace.destroy(workspacePath);
+        } catch {
+          /* best effort */
+        }
+      }
+      try {
+        deleteMetadata(sessionsDir, sessionId, false);
+      } catch {
+        /* best effort */
+      }
+      throw err;
+    }
 
     // Write metadata and run post-launch setup
     const session: Session = {

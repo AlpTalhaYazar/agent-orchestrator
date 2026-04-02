@@ -2073,6 +2073,27 @@ describe("spawn", () => {
         expect(readMetadataRaw(sessionsDir, "app-orchestrator-1")).toBeNull();
       });
 
+      it("destroys the worktree and metadata when runtime creation fails", async () => {
+        const worktreePath = join(tmpDir, "orchestrator-ws-rt-fail");
+        (mockWorkspace.create as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          path: worktreePath,
+          branch: "orchestrator/app-orchestrator-1",
+          sessionId: "app-orchestrator-1",
+          projectId: "my-app",
+        });
+        (mockRuntime.create as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+          new Error("runtime creation failed"),
+        );
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        await expect(
+          sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true }),
+        ).rejects.toThrow("runtime creation failed");
+
+        expect(mockWorkspace.destroy).toHaveBeenCalledWith(worktreePath);
+        expect(readMetadataRaw(sessionsDir, "app-orchestrator-1")).toBeNull();
+      });
+
       it("blocks spawn while the project is globally paused (orchestrator-N orchestrator)", async () => {
         // Pause set by a worktree-based orchestrator
         writeMetadata(sessionsDir, "app-orchestrator-1", {
