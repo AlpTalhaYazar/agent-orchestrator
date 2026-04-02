@@ -42,6 +42,7 @@ export {
   isSecretField,
   filterSecrets,
   matchProjectByCwd,
+  findProjectByPath,
 } from "./global-config.js";
 export type {
   ConfigMode,

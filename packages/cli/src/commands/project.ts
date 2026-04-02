@@ -22,6 +22,7 @@ import {
   loadLocalProjectConfig,
   syncShadow,
   matchProjectByCwd,
+  findProjectByPath,
   loadConfig,
   generateSessionPrefix,
   generateProjectId,
@@ -81,10 +82,10 @@ export function registerProjectCommand(program: Command): void {
         // Load or scaffold global config
         let globalConfig = loadGlobalConfig() ?? scaffoldGlobalConfig();
 
-        // Check if already registered
-        const existingId = matchProjectByCwd(globalConfig, projectPath);
-        if (existingId) {
-          const entry = globalConfig.projects[existingId];
+        // Check if already registered (exact path match)
+        const existing = findProjectByPath(globalConfig, projectPath);
+        if (existing) {
+          const { id: existingId, entry } = existing;
           console.log(chalk.yellow(`Project already registered as "${existingId}" (${entry.name ?? existingId})`));
           console.log(chalk.dim(`  Path: ${entry.path}`));
           return;
@@ -95,8 +96,8 @@ export function registerProjectCommand(program: Command): void {
 
         // Handle ID collision
         if (globalConfig.projects[projectId]) {
-          const existing = globalConfig.projects[projectId];
-          if (resolve(expandHome(existing.path)) !== projectPath) {
+          const conflicting = globalConfig.projects[projectId];
+          if (resolve(expandHome(conflicting.path)) !== projectPath) {
             let suffix = 2;
             while (globalConfig.projects[`${projectId}${suffix}`]) suffix++;
             const altId = `${projectId}${suffix}`;
