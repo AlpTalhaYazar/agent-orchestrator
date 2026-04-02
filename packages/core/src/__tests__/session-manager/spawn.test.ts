@@ -1859,7 +1859,7 @@ describe("spawn", () => {
       expect(mockAgent.getLaunchCommand).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: "app-orchestrator",
-          systemPromptFile: expect.stringContaining("orchestrator-prompt.md"),
+          systemPromptFile: expect.stringContaining("orchestrator-prompt-app-orchestrator.md"),
         }),
       );
 

@@ -368,7 +368,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     raw: Record<string, string> | null | undefined,
   ): boolean {
     if (!raw) return false;
-    return raw["role"] === "orchestrator" || sessionId.endsWith("-orchestrator");
+    return (
+      raw["role"] === "orchestrator" ||
+      sessionId.endsWith("-orchestrator") ||
+      /-(orch-\d+)$/.test(sessionId)
+    );
   }
 
   function isCleanupProtectedSession(
@@ -1405,7 +1409,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     if (orchestratorConfig.systemPrompt) {
       const baseDir = getProjectBaseDir(config.configPath, project.path);
       mkdirSync(baseDir, { recursive: true });
-      systemPromptFile = join(baseDir, "orchestrator-prompt.md");
+      systemPromptFile = join(baseDir, `orchestrator-prompt-${sessionId}.md`);
       writeFileSync(systemPromptFile, orchestratorConfig.systemPrompt, "utf-8");
     }
 
