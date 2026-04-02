@@ -440,9 +440,10 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   function repairSingleSessionMetadataOnRead(
     sessionsDir: string,
     record: ActiveSessionRecord,
+    sessionPrefix?: string,
   ): ActiveSessionRecord {
     const repaired = { ...record, raw: { ...record.raw } };
-    if (!isOrchestratorSessionRecord(repaired.sessionName, repaired.raw)) {
+    if (!isOrchestratorSessionRecord(repaired.sessionName, repaired.raw, sessionPrefix)) {
       return repaired;
     }
 
@@ -482,13 +483,14 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   function repairSessionMetadataOnRead(
     sessionsDir: string,
     records: ActiveSessionRecord[],
+    sessionPrefix?: string,
   ): ActiveSessionRecord[] {
     const repaired = records.map((record) => ({ ...record, raw: { ...record.raw } }));
     const duplicatePRAttachments = new Map<string, ActiveSessionRecord[]>();
 
     for (const record of repaired) {
-      if (isOrchestratorSessionRecord(record.sessionName, record.raw)) {
-        record.raw = repairSingleSessionMetadataOnRead(sessionsDir, record).raw;
+      if (isOrchestratorSessionRecord(record.sessionName, record.raw, sessionPrefix)) {
+        record.raw = repairSingleSessionMetadataOnRead(sessionsDir, record, sessionPrefix).raw;
         continue;
       }
 
@@ -549,7 +551,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       return [{ sessionName, raw, modifiedAt } satisfies ActiveSessionRecord];
     });
 
-    return repairSessionMetadataOnRead(sessionsDir, records);
+    return repairSessionMetadataOnRead(sessionsDir, records, project.sessionPrefix);
   }
 
   function markArchivedOpenCodeCleanup(sessionsDir: string, sessionId: SessionId): void {
@@ -825,11 +827,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         modifiedAt = undefined;
       }
 
-      const repaired = repairSingleSessionMetadataOnRead(sessionsDir, {
-        sessionName: sessionId,
-        raw,
-        modifiedAt,
-      });
+      const repaired = repairSingleSessionMetadataOnRead(
+        sessionsDir,
+        { sessionName: sessionId, raw, modifiedAt },
+        project.sessionPrefix,
+      );
 
       return { raw: repaired.raw, sessionsDir, project, projectId };
     }
@@ -1716,11 +1718,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         // If stat fails, timestamps will fall back to current time
       }
 
-      const repaired = repairSingleSessionMetadataOnRead(sessionsDir, {
-        sessionName: sessionId,
-        raw,
-        modifiedAt,
-      });
+      const repaired = repairSingleSessionMetadataOnRead(
+        sessionsDir,
+        { sessionName: sessionId, raw, modifiedAt },
+        project.sessionPrefix,
+      );
 
       const session = metadataToSession(sessionId, repaired.raw, projectId, createdAt, modifiedAt);
 
