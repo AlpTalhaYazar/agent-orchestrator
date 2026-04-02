@@ -1994,6 +1994,161 @@ describe("spawn", () => {
       expect(mockRuntime.create).not.toHaveBeenCalled();
       expect(readMetadataRaw(sessionsDir, "app-orchestrator")).toEqual({});
     });
+
+    describe("useWorktree: true", () => {
+      it("generates a unique orchestrator session ID (app-orch-1)", async () => {
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        const session = await sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true });
+
+        expect(session.id).toBe("app-orch-1");
+        expect(session.projectId).toBe("my-app");
+        expect(session.status).toBe("working");
+      });
+
+      it("creates a worktree with an orchestrator branch", async () => {
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        await sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true });
+
+        expect(mockWorkspace.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sessionId: "app-orch-1",
+            branch: "orchestrator/app-orch-1",
+            projectId: "my-app",
+          }),
+        );
+      });
+
+      it("uses the worktree path returned by the workspace plugin", async () => {
+        const worktreePath = join(tmpDir, "orchestrator-ws");
+        (mockWorkspace.create as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          path: worktreePath,
+          branch: "orchestrator/app-orch-1",
+          sessionId: "app-orch-1",
+          projectId: "my-app",
+        });
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        const session = await sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true });
+
+        expect(session.workspacePath).toBe(worktreePath);
+        expect(session.branch).toBe("orchestrator/app-orch-1");
+      });
+
+      it("writes metadata with worktree path and orchestrator role", async () => {
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        await sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true });
+
+        const meta = readMetadataRaw(sessionsDir, "app-orch-1");
+        expect(meta?.["role"]).toBe("orchestrator");
+        expect(meta?.["branch"]).toBe("orchestrator/app-orch-1");
+        expect(meta?.["status"]).toBe("working");
+        expect(meta?.["project"]).toBe("my-app");
+      });
+
+      it("increments the orchestrator counter for each new worktree session", async () => {
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        const s1 = await sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true });
+        const s2 = await sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true });
+
+        expect(s1.id).toBe("app-orch-1");
+        expect(s2.id).toBe("app-orch-2");
+        expect(mockWorkspace.create).toHaveBeenCalledTimes(2);
+      });
+
+      it("cleans up reserved metadata on workspace creation failure", async () => {
+        (mockWorkspace.create as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+          new Error("workspace creation failed"),
+        );
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        await expect(
+          sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true }),
+        ).rejects.toThrow("workspace creation failed");
+
+        // Reserved session file should be cleaned up
+        expect(readMetadataRaw(sessionsDir, "app-orch-1")).toBeNull();
+      });
+
+      it("blocks spawn while the project is globally paused (orch-N orchestrator)", async () => {
+        // Pause set by a worktree-based orchestrator
+        writeMetadata(sessionsDir, "app-orch-1", {
+          worktree: join(tmpDir, "my-app"),
+          branch: "orchestrator/app-orch-1",
+          status: "working",
+          role: "orchestrator",
+          project: "my-app",
+          runtimeHandle: JSON.stringify(makeHandle("rt-orch-1")),
+        });
+        updateMetadata(sessionsDir, "app-orch-1", {
+          globalPauseUntil: new Date(Date.now() + 60_000).toISOString(),
+          globalPauseReason: "Rate limit reached",
+          globalPauseSource: "app-9",
+        });
+
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        await expect(
+          sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true }),
+        ).rejects.toThrow("Project is paused due to model rate limit until");
+      });
+
+      it("does not skip pause check for orch-N orchestrator when sending to workers", async () => {
+        // Worker session
+        writeMetadata(sessionsDir, "app-1", {
+          worktree: join(tmpDir, "ws-1"),
+          branch: "session/app-1",
+          status: "working",
+          project: "my-app",
+          runtimeHandle: JSON.stringify(makeHandle("rt-1")),
+        });
+        // Pause set by orch-1
+        writeMetadata(sessionsDir, "app-orch-1", {
+          worktree: join(tmpDir, "my-app"),
+          branch: "orchestrator/app-orch-1",
+          status: "working",
+          role: "orchestrator",
+          project: "my-app",
+          runtimeHandle: JSON.stringify(makeHandle("rt-orch-1")),
+        });
+        updateMetadata(sessionsDir, "app-orch-1", {
+          globalPauseUntil: new Date(Date.now() + 60_000).toISOString(),
+          globalPauseReason: "Rate limit",
+          globalPauseSource: "app-orch-1",
+        });
+
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        await expect(sm.send("app-1", "hello")).rejects.toThrow(
+          "Project is paused due to model rate limit until",
+        );
+      });
+
+      it("allows orch-N orchestrator session to send despite project pause", async () => {
+        // Orch-1 session itself is alive
+        writeMetadata(sessionsDir, "app-orch-1", {
+          worktree: join(tmpDir, "my-app"),
+          branch: "orchestrator/app-orch-1",
+          status: "working",
+          role: "orchestrator",
+          project: "my-app",
+          runtimeHandle: JSON.stringify(makeHandle("rt-orch-1")),
+        });
+        updateMetadata(sessionsDir, "app-orch-1", {
+          globalPauseUntil: new Date(Date.now() + 60_000).toISOString(),
+          globalPauseReason: "Rate limit",
+          globalPauseSource: "app-orch-1",
+        });
+
+        const sm = createSessionManager({ config, registry: mockRegistry });
+
+        // The orchestrator itself should be exempt from the pause
+        await expect(sm.send("app-orch-1", "continue")).resolves.not.toThrow();
+      });
+    });
   });
 });
 
