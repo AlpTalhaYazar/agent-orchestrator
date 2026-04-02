@@ -20,20 +20,15 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Legacy: /sessions/[id] → /projects/[projectId]/sessions/[id]
-  // Try to resolve project from the session's projectId query param, otherwise
-  // redirect to the API which will resolve it.
+  // Legacy: /sessions/[id]?project=<id> → /sessions/[id]
+  // Keep the canonical session route and strip the stale project context.
   const sessionMatch = pathname.match(/^\/sessions\/([^/]+)$/);
   if (sessionMatch) {
-    const sessionId = sessionMatch[1];
-    const projectId = searchParams.get("project");
-    if (projectId) {
+    if (searchParams.has("project")) {
       const url = request.nextUrl.clone();
-      url.pathname = `/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`;
       url.searchParams.delete("project");
       return NextResponse.redirect(url);
     }
-    // No project context — let the old route handle it (still works)
     return NextResponse.next();
   }
 

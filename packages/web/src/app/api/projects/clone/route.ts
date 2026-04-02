@@ -5,9 +5,8 @@ import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 import {
   configToYaml,
-  findConfigFile,
   generateConfigFromUrl,
-  loadConfig,
+  loadLocalProjectConfig,
   parseRepoUrl,
   sanitizeProjectId,
 } from "@composio/ao-core";
@@ -51,7 +50,7 @@ export async function POST(request: Request) {
     const repo = parseRepoUrl(parsed.data.url);
     const cloneRoot = await assertPathWithinHome(parsed.data.location);
     const targetDir = await assertPathWithinHome(resolve(cloneRoot, repo.repo));
-    let projectKey = sanitizeProjectId(repo.repo);
+    const projectKey = sanitizeProjectId(repo.repo);
 
     await ensureDirectory(cloneRoot);
     await ensureMissingOrEmptyDirectory(targetDir);
@@ -60,9 +59,9 @@ export async function POST(request: Request) {
       timeout: 120_000,
     });
 
-    const configPath = findConfigFile(targetDir);
+    const localConfig = loadLocalProjectConfig(targetDir);
 
-    if (!configPath) {
+    if (!localConfig) {
       const config = generateConfigFromUrl({
         parsed: repo,
         repoPath: targetDir,
@@ -72,9 +71,6 @@ export async function POST(request: Request) {
         configToYaml(extractFlatLocalConfig(config, projectKey)),
         "utf-8",
       );
-    } else {
-      const config = loadConfig(configPath);
-      projectKey = Object.keys(config.projects)[0] ?? projectKey;
     }
 
     const project = registerAndResolveProject(targetDir, {
