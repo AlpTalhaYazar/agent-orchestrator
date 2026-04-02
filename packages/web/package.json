@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm:dev:next\" \"npm:dev:terminal\" \"npm:dev:direct-terminal\"",
-    "dev:next": "next dev -p ${PORT:-3000}",
+    "dev:next": "AO_NEXT_DIST_DIR=.next-dev next dev -p ${PORT:-3000}",
     "dev:terminal": "tsx watch server/terminal-websocket.ts",
     "dev:direct-terminal": "tsx watch server/direct-terminal-ws.ts",
     "build": "next build && tsc -p tsconfig.server.json",
@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clean": "rm -rf .next dist-server",
+    "clean": "rm -rf .next .next-dev dist-server",
     "screenshot": "tsx e2e/screenshot.ts",
     "screenshot:install": "npx playwright install chromium"
   },

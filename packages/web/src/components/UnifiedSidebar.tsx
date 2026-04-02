@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -47,6 +56,23 @@ function projectSwatch(project: PortfolioProjectSummary, index: number) {
   return PROJECT_SWATCHES[index % PROJECT_SWATCHES.length];
 }
 
+function reorderProjects(
+  projects: PortfolioProjectSummary[],
+  draggedProjectId: string,
+  targetProjectId: string,
+): PortfolioProjectSummary[] {
+  if (draggedProjectId === targetProjectId) return projects;
+
+  const fromIndex = projects.findIndex((project) => project.id === draggedProjectId);
+  const targetIndex = projects.findIndex((project) => project.id === targetProjectId);
+  if (fromIndex === -1 || targetIndex === -1) return projects;
+
+  const next = [...projects];
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(targetIndex, 0, moved);
+  return next;
+}
+
 function SidebarContent({
   projects,
   sessions,
@@ -74,19 +100,22 @@ function SidebarContent({
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const [removing, setRemoving] = useState(false);
   const [spawnMenuProjectId, setSpawnMenuProjectId] = useState<string | null>(null);
+  const [orderedProjects, setOrderedProjects] = useState(projects);
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState<string | null>(null);
   const filterMenuRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
   const spawnMenuRef = useRef<HTMLDivElement>(null);
 
   const sortedProjects = useMemo(
-    () => [...projects].sort((a, b) => a.name.localeCompare(b.name)),
-    [projects],
+    () => [...orderedProjects].sort((a, b) => a.name.localeCompare(b.name)),
+    [orderedProjects],
   );
 
   const visibleProjects = useMemo(() => {
-    let filtered = sortedProjects;
+    let filtered = groupBy === "repo" && repoFilter === "all" ? orderedProjects : sortedProjects;
     if (groupBy === "repo" && repoFilter !== "all") {
-      filtered = filtered.filter((project) => project.id === repoFilter);
+      filtered = sortedProjects.filter((project) => project.id === repoFilter);
     }
     if (groupBy === "status" && statusFilter !== "all") {
       filtered = filtered.filter((project) => {
@@ -97,7 +126,9 @@ function SidebarContent({
       });
     }
     return filtered;
-  }, [groupBy, repoFilter, sortedProjects, statusFilter]);
+  }, [groupBy, orderedProjects, repoFilter, sortedProjects, statusFilter]);
+
+  const canReorderWorkspaces = groupBy === "repo" && repoFilter === "all";
 
   const activeAgents = useMemo(() => {
     if (!sessions) return [];
@@ -111,8 +142,12 @@ function SidebarContent({
 
   const projectNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const p of projects) map.set(p.id, p.name);
+    for (const p of orderedProjects) map.set(p.id, p.name);
     return map;
+  }, [orderedProjects]);
+
+  useEffect(() => {
+    setOrderedProjects(projects);
   }, [projects]);
 
   const spawnAgents = useMemo(
@@ -245,6 +280,58 @@ function SidebarContent({
       router.push(getProjectSessionHref(projectId, body.session.id));
     } catch (error) {
       console.error(error);
+    }
+  }
+
+  async function persistProjectOrder(nextProjects: PortfolioProjectSummary[]) {
+    const previousProjects = orderedProjects;
+    setOrderedProjects(nextProjects);
+
+    try {
+      const res = await fetch("/api/settings/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectOrder: nextProjects.map((project) => project.id) }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to save workspace order");
+      }
+      router.refresh();
+    } catch (error) {
+      console.error(error);
+      setOrderedProjects(previousProjects);
+    }
+  }
+
+  function handleProjectDragStart(event: DragEvent<HTMLDivElement>, projectId: string) {
+    if (!canReorderWorkspaces) return;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", projectId);
+    setDraggedProjectId(projectId);
+    setDragOverProjectId(projectId);
+  }
+
+  function handleProjectDragOver(event: DragEvent<HTMLDivElement>, projectId: string) {
+    if (!canReorderWorkspaces || !draggedProjectId) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    if (dragOverProjectId !== projectId) {
+      setDragOverProjectId(projectId);
+    }
+  }
+
+  function handleProjectDragEnd() {
+    setDraggedProjectId(null);
+    setDragOverProjectId(null);
+  }
+
+  function handleProjectDrop(projectId: string) {
+    if (!canReorderWorkspaces || !draggedProjectId) return;
+    const nextProjects = reorderProjects(orderedProjects, draggedProjectId, projectId);
+    handleProjectDragEnd();
+    if (nextProjects !== orderedProjects) {
+      void persistProjectOrder(nextProjects);
     }
   }
 
@@ -429,20 +516,51 @@ function SidebarContent({
           {visibleProjects.map((project) => {
             const isActive = activeProjectId === project.id;
             const attentionPills = getAttentionPills(project);
+            const isDragTarget =
+              canReorderWorkspaces &&
+              draggedProjectId !== null &&
+              draggedProjectId !== project.id &&
+              dragOverProjectId === project.id;
 
             return (
               <div
                 key={project.id}
+                draggable={canReorderWorkspaces}
+                data-testid={`workspace-row-${project.id}`}
+                data-draggable={canReorderWorkspaces ? "true" : "false"}
+                onDragStart={(event) => handleProjectDragStart(event, project.id)}
+                onDragOver={(event) => handleProjectDragOver(event, project.id)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handleProjectDrop(project.id);
+                }}
+                onDragEnd={handleProjectDragEnd}
                 className={cn(
                   "group/row relative rounded-[var(--radius-sm)] transition-colors duration-100",
                   isActive
                     ? "bg-[var(--color-accent-subtle)]"
                     : "hover:bg-[var(--color-bg-elevated-hover)]",
+                  canReorderWorkspaces && "cursor-grab active:cursor-grabbing",
+                  draggedProjectId === project.id && "opacity-70",
+                  isDragTarget && "ring-1 ring-[var(--color-accent)] ring-inset",
                 )}
               >
                 {/* Active accent bar */}
                 {isActive ? (
                   <span className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-[var(--color-accent)]" />
+                ) : null}
+                {canReorderWorkspaces ? (
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute left-1.5 top-1/2 z-[1] -translate-y-1/2 text-[var(--color-text-quaternary)] transition-all duration-100",
+                      draggedProjectId === project.id
+                        ? "opacity-100"
+                        : "opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100",
+                    )}
+                    aria-hidden="true"
+                  >
+                    <GripIcon />
+                  </span>
                 ) : null}
 
                 <div
@@ -463,7 +581,7 @@ function SidebarContent({
                       degraded={project.degraded}
                     />
 
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 transition-[padding-right] duration-100 group-hover/row:pr-[84px] group-focus-within/row:pr-[84px]">
                       <span className="block truncate text-[13px] font-medium tracking-[-0.02em]">
                         {project.name}
                       </span>
@@ -486,10 +604,8 @@ function SidebarContent({
                   {/* Action buttons — visible on hover/focus-within for keyboard accessibility */}
                   <div
                     className={cn(
-                      "ml-1 flex shrink-0 items-center gap-0.5 transition-opacity duration-100",
-                      isActive
-                        ? "opacity-100"
-                        : "opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100",
+                      "pointer-events-none absolute right-2 top-1/2 z-[2] flex -translate-y-1/2 items-center gap-0.5 transition-opacity duration-100",
+                      "opacity-0 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
                     )}
                   >
                     <SidebarIconButton
@@ -664,7 +780,7 @@ function SidebarContent({
   );
 }
 
-function Tooltip({ label, children }: { label: string; children: React.ReactNode }) {
+function Tooltip({ label, children }: { label: string; children: ReactNode }) {
   const triggerRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -701,7 +817,7 @@ function SidebarIconButton({
   label,
   onClick,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   label: string;
   onClick?: () => void;
 }) {
@@ -934,7 +1050,7 @@ function PopoverField({
   onToggle: () => void;
   isOpen: boolean;
   onClose: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const fieldRef = useRef<HTMLDivElement>(null);
 
@@ -1014,7 +1130,7 @@ function SidebarMenuButton({
   label,
   onClick,
 }: {
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   label: string;
   onClick: () => void;
 }) {
@@ -1102,6 +1218,14 @@ function LinkIcon() {
     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
       <path d="M15 7h1a5 5 0 0 1 0 10h-1M9 17H8a5 5 0 0 1 0-10h1" />
       <path d="M8.5 12h7" />
+    </svg>
+  );
+}
+
+function GripIcon() {
+  return (
+    <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="1.7" viewBox="0 0 24 24" strokeLinecap="round">
+      <path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" />
     </svg>
   );
 }

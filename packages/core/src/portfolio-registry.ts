@@ -33,6 +33,109 @@ function normalizePath(path: string): string {
   return resolve(path);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parsePortfolioRegistered(value: unknown): PortfolioRegistered | null {
+  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.projects)) {
+    return null;
+  }
+
+  const projects: PortfolioRegistered["projects"] = [];
+  for (const project of value.projects) {
+    if (!isRecord(project) || typeof project.path !== "string" || typeof project.addedAt !== "string") {
+      return null;
+    }
+    if (
+      "configProjectKey" in project &&
+      project.configProjectKey !== undefined &&
+      typeof project.configProjectKey !== "string"
+    ) {
+      return null;
+    }
+
+    projects.push({
+      path: project.path,
+      addedAt: project.addedAt,
+      ...(typeof project.configProjectKey === "string"
+        ? { configProjectKey: project.configProjectKey }
+        : {}),
+    });
+  }
+
+  return { version: 1, projects };
+}
+
+function parsePortfolioPreferences(value: unknown): PortfolioPreferences | null {
+  if (!isRecord(value) || value.version !== 1) {
+    return null;
+  }
+
+  if ("defaultProjectId" in value && value.defaultProjectId !== undefined && typeof value.defaultProjectId !== "string") {
+    return null;
+  }
+
+  if (
+    "projectOrder" in value &&
+    value.projectOrder !== undefined &&
+    (!Array.isArray(value.projectOrder) || value.projectOrder.some((id) => typeof id !== "string"))
+  ) {
+    return null;
+  }
+
+  if ("projects" in value && value.projects !== undefined) {
+    if (!isRecord(value.projects)) {
+      return null;
+    }
+
+    for (const prefs of Object.values(value.projects)) {
+      if (!isRecord(prefs)) {
+        return null;
+      }
+      if ("pinned" in prefs && prefs.pinned !== undefined && typeof prefs.pinned !== "boolean") {
+        return null;
+      }
+      if ("enabled" in prefs && prefs.enabled !== undefined && typeof prefs.enabled !== "boolean") {
+        return null;
+      }
+      if (
+        "displayName" in prefs &&
+        prefs.displayName !== undefined &&
+        typeof prefs.displayName !== "string"
+      ) {
+        return null;
+      }
+    }
+  }
+
+  return {
+    version: 1,
+    ...(typeof value.defaultProjectId === "string" ? { defaultProjectId: value.defaultProjectId } : {}),
+    ...(Array.isArray(value.projectOrder) ? { projectOrder: value.projectOrder } : {}),
+    ...(isRecord(value.projects)
+      ? {
+          projects: Object.fromEntries(
+            Object.entries(value.projects).map(([id, prefs]) => [
+              id,
+              {
+                ...(isRecord(prefs) && typeof prefs.pinned === "boolean"
+                  ? { pinned: prefs.pinned }
+                  : {}),
+                ...(isRecord(prefs) && typeof prefs.enabled === "boolean"
+                  ? { enabled: prefs.enabled }
+                  : {}),
+                ...(isRecord(prefs) && typeof prefs.displayName === "string"
+                  ? { displayName: prefs.displayName }
+                  : {}),
+              },
+            ]),
+          ),
+        }
+      : {}),
+  };
+}
+
 /** Load registered projects from registered.json (legacy compatibility only). */
 export function loadRegistered(): PortfolioRegistered {
   const path = getRegisteredPath();
@@ -41,7 +144,7 @@ export function loadRegistered(): PortfolioRegistered {
   }
   try {
     const content = readFileSync(path, "utf-8");
-    return JSON.parse(content) as PortfolioRegistered;
+    return parsePortfolioRegistered(JSON.parse(content)) ?? { version: 1, projects: [] };
   } catch {
     return { version: 1, projects: [] };
   }
@@ -62,7 +165,7 @@ export function loadPreferences(): PortfolioPreferences {
   }
   try {
     const content = readFileSync(path, "utf-8");
-    return JSON.parse(content) as PortfolioPreferences;
+    return parsePortfolioPreferences(JSON.parse(content)) ?? { version: 1 };
   } catch {
     return { version: 1 };
   }
@@ -73,6 +176,17 @@ export function savePreferences(prefs: PortfolioPreferences): void {
   const dir = getPortfolioDir();
   mkdirSync(dir, { recursive: true });
   atomicWriteFileSync(getPreferencesPath(), JSON.stringify(prefs, null, 2));
+}
+
+/**
+ * Atomically update preferences: reads the current state, applies the updater,
+ * and writes back in a single synchronous block. This prevents lost updates
+ * from concurrent async handlers that might interleave between read and write.
+ */
+export function updatePreferences(updater: (prefs: PortfolioPreferences) => void): void {
+  const prefs = loadPreferences();
+  updater(prefs);
+  savePreferences(prefs);
 }
 
 function applyPreferences(
@@ -199,12 +313,11 @@ export function unregisterProject(projectId: string): void {
   const globalConfig = loadGlobalConfig();
   if (!globalConfig?.projects[projectId]) return;
 
-  delete globalConfig.projects[projectId];
+  const { [projectId]: _removedProject, ...remainingProjects } = globalConfig.projects;
+  globalConfig.projects = remainingProjects;
   if (globalConfig.projectOrder) {
-    globalConfig.projectOrder = globalConfig.projectOrder.filter((id) => id !== projectId);
-    if (globalConfig.projectOrder.length === 0) {
-      delete globalConfig.projectOrder;
-    }
+    const nextProjectOrder = globalConfig.projectOrder.filter((id) => id !== projectId);
+    globalConfig.projectOrder = nextProjectOrder.length > 0 ? nextProjectOrder : undefined;
   }
 
   saveGlobalConfig(globalConfig);

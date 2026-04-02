@@ -32,7 +32,6 @@ function hasLocalConfigFile(dirPath: string): string | null {
   }
   return null;
 }
-
 async function ensureGitRepo(dirPath: string): Promise<void> {
   if (existsSync(join(dirPath, ".git"))) return;
 
