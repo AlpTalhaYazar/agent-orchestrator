@@ -10,7 +10,6 @@
 import {
   getPortfolio,
   listPortfolioSessions,
-  getPortfolioSessionCounts,
   loadConfig,
   generateSessionPrefix,
   type PortfolioProject,
@@ -27,17 +26,25 @@ export interface PortfolioServices {
 interface CachedPortfolio {
   services: PortfolioServices;
   sessions: PortfolioSession[];
+  sessionsLoaded: boolean;
   refreshedAt: number;
 }
 
 const CACHE_TTL_MS = 10_000; // 10 seconds
-const BACKGROUND_REFRESH_MS = 15_000; // 15 seconds
+const BACKGROUND_REFRESH_MS = 5_000; // Keep sessions warm before the request cache goes stale.
 
 // Cache in globalThis to survive Next.js HMR reloads (same pattern as services.ts)
 const globalForPortfolio = globalThis as typeof globalThis & {
   _aoPortfolioCache?: CachedPortfolio;
   _aoPortfolioRefreshTimer?: ReturnType<typeof setInterval>;
 };
+
+export function stopPortfolioBackgroundRefresh(): void {
+  if (globalForPortfolio._aoPortfolioRefreshTimer) {
+    clearInterval(globalForPortfolio._aoPortfolioRefreshTimer);
+    globalForPortfolio._aoPortfolioRefreshTimer = undefined;
+  }
+}
 
 function isCacheFresh(): boolean {
   const cached = globalForPortfolio._aoPortfolioCache;
@@ -46,6 +53,8 @@ function isCacheFresh(): boolean {
 }
 
 function refreshCache(): CachedPortfolio {
+  const existingSessions = globalForPortfolio._aoPortfolioCache?.sessions ?? [];
+  const existingSessionsLoaded = globalForPortfolio._aoPortfolioCache?.sessionsLoaded ?? false;
   let portfolio = getPortfolio();
   if (portfolio.length === 0) {
     try {
@@ -71,7 +80,8 @@ function refreshCache(): CachedPortfolio {
   const preferences = loadPreferences();
   const cached: CachedPortfolio = {
     services: { portfolio, preferences },
-    sessions: [], // Sessions are loaded async — populated by refreshSessionsCache()
+    sessions: existingSessions,
+    sessionsLoaded: existingSessionsLoaded,
     refreshedAt: Date.now(),
   };
   globalForPortfolio._aoPortfolioCache = cached;
@@ -84,6 +94,7 @@ async function refreshSessionsCache(): Promise<void> {
   try {
     const sessions = await listPortfolioSessions(cached.services.portfolio);
     cached.sessions = sessions;
+    cached.sessionsLoaded = true;
     cached.refreshedAt = Date.now();
   } catch {
     // Keep stale sessions on refresh failure
@@ -101,6 +112,7 @@ function ensureBackgroundRefresh(): void {
       // Background refresh failure is non-fatal
     }
   }, BACKGROUND_REFRESH_MS);
+  globalForPortfolio._aoPortfolioRefreshTimer.unref?.();
 }
 
 /** Get portfolio services (cached, non-blocking after first call). */
@@ -116,7 +128,7 @@ export function getPortfolioServices(): PortfolioServices {
 export async function getCachedPortfolioSessions(): Promise<PortfolioSession[]> {
   ensureBackgroundRefresh();
   const cached = globalForPortfolio._aoPortfolioCache;
-  if (cached && cached.sessions.length > 0 && isCacheFresh()) {
+  if (cached && cached.sessionsLoaded && isCacheFresh()) {
     return cached.sessions;
   }
   // Cache miss or stale — refresh synchronously
@@ -128,5 +140,5 @@ export async function getCachedPortfolioSessions(): Promise<PortfolioSession[]> 
 }
 
 // Re-export for direct use when cache bypass is needed
-export { listPortfolioSessions, getPortfolioSessionCounts };
+export { listPortfolioSessions };
 export type { PortfolioProject, PortfolioSession };
