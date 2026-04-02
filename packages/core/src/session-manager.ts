@@ -293,11 +293,18 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   } | null {
     const sessionsDir = getProjectSessionsDir(project);
 
-    // Check canonical single-orchestrator session first (fast path)
+    // Build the candidate list using name-pattern matching so we never read
+    // raw metadata for worker sessions (avoids N file reads on every hot path).
     const canonicalOrchestratorId = `${project.sessionPrefix}-orchestrator`;
-    const sessionIds = [canonicalOrchestratorId, ...listMetadata(sessionsDir)];
+    const orchPattern = new RegExp(`^${escapeRegex(project.sessionPrefix)}-orch-(\\d+)$`);
+    const candidateIds = new Set<string>([canonicalOrchestratorId]);
+    for (const id of listMetadata(sessionsDir)) {
+      if (id === canonicalOrchestratorId || orchPattern.test(id)) {
+        candidateIds.add(id);
+      }
+    }
 
-    for (const sessionId of sessionIds) {
+    for (const sessionId of candidateIds) {
       const raw = readMetadataRaw(sessionsDir, sessionId);
       if (!raw) continue;
       if (!isOrchestratorSessionRecord(sessionId, raw)) continue;
