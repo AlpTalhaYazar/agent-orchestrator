@@ -31,6 +31,7 @@ import {
   type Notifier,
   type Session,
   type EventPriority,
+  type PREnrichmentData,
   type ProjectConfig as _ProjectConfig,
 } from "./types.js";
 import { updateMetadata } from "./metadata.js";
@@ -198,6 +199,53 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
   let polling = false; // re-entrancy guard
   let allCompleteEmitted = false; // guard against repeated all_complete
 
+  function getPRKey(pr: Session["pr"]): string | null {
+    if (!pr) return null;
+    return `${pr.owner}/${pr.repo}#${pr.number}`;
+  }
+
+  async function preloadPREnrichment(
+    sessions: Session[],
+  ): Promise<Map<SessionId, PREnrichmentData>> {
+    const enrichedBySession = new Map<SessionId, PREnrichmentData>();
+    const sessionsByProject = new Map<string, Session[]>();
+
+    for (const session of sessions) {
+      if (!session.pr) continue;
+      const list = sessionsByProject.get(session.projectId) ?? [];
+      list.push(session);
+      sessionsByProject.set(session.projectId, list);
+    }
+
+    await Promise.all(
+      [...sessionsByProject.entries()].map(async ([projectId, projectSessions]) => {
+        const project = config.projects[projectId];
+        if (!project?.scm) return;
+        const scm = registry.get<SCM>("scm", project.scm.plugin);
+        if (!scm?.enrichSessionsPRBatch) return;
+
+        try {
+          const prs = projectSessions
+            .map((session) => session.pr)
+            .filter((pr): pr is NonNullable<Session["pr"]> => pr !== null);
+          const enrichment = await scm.enrichSessionsPRBatch(prs);
+          for (const session of projectSessions) {
+            const key = getPRKey(session.pr);
+            if (!key) continue;
+            const data = enrichment.get(key);
+            if (data) {
+              enrichedBySession.set(session.id, data);
+            }
+          }
+        } catch {
+          // Fall back to per-session SCM calls if batch enrichment fails.
+        }
+      }),
+    );
+
+    return enrichedBySession;
+  }
+
   /** Check if idle time exceeds the agent-stuck threshold. */
   function isIdleBeyondThreshold(session: Session, idleTimestamp: Date): boolean {
     const stuckReaction = getReactionConfigForSession(session, "agent-stuck");
@@ -210,7 +258,10 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
   }
 
   /** Determine current status for a session by polling plugins. */
-  async function determineStatus(session: Session): Promise<SessionStatus> {
+  async function determineStatus(
+    session: Session,
+    prEnrichment?: PREnrichmentData,
+  ): Promise<SessionStatus> {
     const project = config.projects[session.projectId];
     if (!project) return session.status;
 
@@ -311,23 +362,26 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
     // 4. Check PR state if PR exists
     if (session.pr && scm) {
       try {
-        const prState = await scm.getPRState(session.pr);
+        const prState = prEnrichment?.state ?? (await scm.getPRState(session.pr));
         if (prState === PR_STATE.MERGED) return "merged";
         if (prState === PR_STATE.CLOSED) return "killed";
 
         // Check CI
-        const ciStatus = await scm.getCISummary(session.pr);
+        const ciStatus = prEnrichment?.ciStatus ?? (await scm.getCISummary(session.pr));
         if (ciStatus === CI_STATUS.FAILING) return "ci_failed";
 
         // Check reviews
-        const reviewDecision = await scm.getReviewDecision(session.pr);
+        const reviewDecision =
+          prEnrichment?.reviewDecision ?? (await scm.getReviewDecision(session.pr));
         if (reviewDecision === "changes_requested") return "changes_requested";
         if (reviewDecision === "approved" || reviewDecision === "none") {
           // Check merge readiness — treat "none" (no reviewers required)
           // the same as "approved" so CI-green PRs reach "mergeable" status
           // and fire the merge.ready event / approved-and-green reaction.
-          const mergeReady = await scm.getMergeability(session.pr);
-          if (mergeReady.mergeable) return "mergeable";
+          const mergeable = prEnrichment
+            ? prEnrichment.mergeable
+            : (await scm.getMergeability(session.pr)).mergeable;
+          if (mergeable) return "mergeable";
           if (reviewDecision === "approved") return "approved";
         }
         if (reviewDecision === "pending") return "review_pending";
@@ -701,14 +755,17 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
   }
 
   /** Poll a single session and handle state transitions. */
-  async function checkSession(session: Session): Promise<void> {
+  async function checkSession(
+    session: Session,
+    prEnrichment?: PREnrichmentData,
+  ): Promise<void> {
     // Use tracked state if available; otherwise use the persisted metadata status
     // (not session.status, which list() may have already overwritten for dead runtimes).
     // This ensures transitions are detected after a lifecycle manager restart.
     const tracked = states.get(session.id);
     const oldStatus =
       tracked ?? ((session.metadata?.["status"] as SessionStatus | undefined) || session.status);
-    const newStatus = await determineStatus(session);
+    const newStatus = await determineStatus(session, prEnrichment);
     let transitionReaction: { key: string; result: ReactionResult | null } | undefined;
 
     if (newStatus !== oldStatus) {
@@ -811,8 +868,12 @@ export function createLifecycleManager(deps: LifecycleManagerDeps): LifecycleMan
         return tracked !== undefined && tracked !== s.status;
       });
 
+      const prEnrichment = await preloadPREnrichment(sessionsToCheck);
+
       // Poll all sessions concurrently
-      await Promise.allSettled(sessionsToCheck.map((s) => checkSession(s)));
+      await Promise.allSettled(
+        sessionsToCheck.map((s) => checkSession(s, prEnrichment.get(s.id))),
+      );
 
       // Prune stale entries from states and reactionTrackers for sessions
       // that no longer appear in the session list (e.g., after kill/cleanup)
