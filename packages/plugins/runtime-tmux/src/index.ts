@@ -5,18 +5,18 @@ import { randomUUID } from "node:crypto";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  type PluginModule,
-  type Runtime,
-  type RuntimeCreateConfig,
-  type RuntimeHandle,
-  type RuntimeMetrics,
-  type AttachInfo,
-  shellEscape,
+import type {
+  PluginModule,
+  Runtime,
+  RuntimeCreateConfig,
+  RuntimeHandle,
+  RuntimeMetrics,
+  AttachInfo,
 } from "@composio/ao-core";
 
 const execFileAsync = promisify(execFile);
 const TMUX_COMMAND_TIMEOUT_MS = 5_000;
+const SHELL_READY_DELAY_MS = 300;
 
 export const manifest = {
   name: "tmux",
@@ -34,19 +34,48 @@ function assertValidSessionId(id: string): void {
   }
 }
 
-function writeLaunchScript(command: string): string {
-  const scriptPath = join(tmpdir(), `ao-launch-${randomUUID()}.sh`);
-  const content = `#!/usr/bin/env bash\nrm -- "$0" 2>/dev/null || true\n${command}\n`;
-  writeFileSync(scriptPath, content, { encoding: "utf-8", mode: 0o700 });
-  return `bash ${shellEscape(scriptPath)}`;
-}
-
 /** Run a tmux command and return stdout */
 async function tmux(...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("tmux", args, {
     timeout: TMUX_COMMAND_TIMEOUT_MS,
   });
   return stdout.trimEnd();
+}
+
+async function sendCommand(
+  target: string,
+  command: string,
+  options: { clearInput: boolean },
+): Promise<void> {
+  if (options.clearInput) {
+    await tmux("send-keys", "-t", target, "C-u");
+  }
+
+  if (command.includes("\n") || command.length > 200) {
+    const bufferName = `ao-${randomUUID()}`;
+    const tmpPath = join(tmpdir(), `ao-send-${randomUUID()}.txt`);
+    writeFileSync(tmpPath, command, { encoding: "utf-8", mode: 0o600 });
+    try {
+      await tmux("load-buffer", "-b", bufferName, tmpPath);
+      await tmux("paste-buffer", "-b", bufferName, "-t", target, "-d");
+    } finally {
+      try {
+        unlinkSync(tmpPath);
+      } catch {
+        // ignore cleanup errors
+      }
+      try {
+        await tmux("delete-buffer", "-b", bufferName);
+      } catch {
+        // Buffer may already be deleted by -d flag — that's fine
+      }
+    }
+  } else {
+    await tmux("send-keys", "-t", target, "-l", command);
+  }
+
+  await sleep(SHELL_READY_DELAY_MS);
+  await tmux("send-keys", "-t", target, "Enter");
 }
 
 export function create(): Runtime {
@@ -63,31 +92,17 @@ export function create(): Runtime {
         envArgs.push("-e", `${key}=${value}`);
       }
 
-      // Create tmux session in detached mode
       await tmux("new-session", "-d", "-s", sessionName, "-c", config.workspacePath, ...envArgs);
-
-      // Send the launch command — clean up the session if this fails.
-      // Use a temp script for long commands so the pane shows a short
-      // invocation instead of a pasted wall of shell.
       try {
-        if (config.launchCommand.length > 200) {
-          const invocation = writeLaunchScript(config.launchCommand);
-          await tmux("send-keys", "-t", sessionName, "-l", invocation);
-          await sleep(300);
-          await tmux("send-keys", "-t", sessionName, "Enter");
-        } else {
-          await tmux("send-keys", "-t", sessionName, config.launchCommand, "Enter");
-        }
-      } catch (err: unknown) {
+        await sleep(SHELL_READY_DELAY_MS);
+        await sendCommand(sessionName, config.launchCommand, { clearInput: false });
+      } catch (error) {
         try {
           await tmux("kill-session", "-t", sessionName);
         } catch {
-          // Best-effort cleanup
+          // Best-effort cleanup; preserve the original launch failure.
         }
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`Failed to send launch command to session "${sessionName}": ${msg}`, {
-          cause: err,
-        });
+        throw error;
       }
 
       return {
@@ -109,42 +124,7 @@ export function create(): Runtime {
     },
 
     async sendMessage(handle: RuntimeHandle, message: string): Promise<void> {
-      // Clear any partial input
-      await tmux("send-keys", "-t", handle.id, "C-u");
-
-      // For long or multiline messages, use load-buffer + paste-buffer
-      // Use randomUUID to avoid temp file collisions on concurrent sends
-      if (message.includes("\n") || message.length > 200) {
-        const bufferName = `ao-${randomUUID()}`;
-        const tmpPath = join(tmpdir(), `ao-send-${randomUUID()}.txt`);
-        writeFileSync(tmpPath, message, { encoding: "utf-8", mode: 0o600 });
-        try {
-          await tmux("load-buffer", "-b", bufferName, tmpPath);
-          await tmux("paste-buffer", "-b", bufferName, "-t", handle.id, "-d");
-        } finally {
-          // Clean up temp file and tmux buffer (in case paste-buffer failed
-          // and the -d flag didn't delete it)
-          try {
-            unlinkSync(tmpPath);
-          } catch {
-            // ignore cleanup errors
-          }
-          try {
-            await tmux("delete-buffer", "-b", bufferName);
-          } catch {
-            // Buffer may already be deleted by -d flag — that's fine
-          }
-        }
-      } else {
-        // Use -l (literal) so text like "Enter" or "Space" isn't interpreted
-        // as tmux key names
-        await tmux("send-keys", "-t", handle.id, "-l", message);
-      }
-
-      // Small delay to let tmux process the pasted text before pressing Enter.
-      // Without this, Enter can arrive before the text is fully rendered.
-      await sleep(300);
-      await tmux("send-keys", "-t", handle.id, "Enter");
+      await sendCommand(handle.id, message, { clearInput: true });
     },
 
     async getOutput(handle: RuntimeHandle, lines = 50): Promise<string> {

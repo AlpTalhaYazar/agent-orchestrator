@@ -17,9 +17,10 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import { ConfigNotFoundError, type OrchestratorConfig } from "./types.js";
 import { generateSessionPrefix } from "./paths.js";
+import { getGlobalConfigPath } from "./global-config.js";
 
 function inferScmPlugin(project: {
-  repo: string;
+  repo?: string;
   scm?: Record<string, unknown>;
   tracker?: Record<string, unknown>;
 }): "github" | "gitlab" {
@@ -144,13 +145,15 @@ const DecomposerConfigSchema = z
 
 const ProjectConfigSchema = z.object({
   name: z.string().optional(),
-  repo: z.string(),
+  repo: z.string().optional(),
   path: z.string(),
   defaultBranch: z.string().default("main"),
   sessionPrefix: z
     .string()
     .regex(/^[a-zA-Z0-9_-]+$/, "sessionPrefix must match [a-zA-Z0-9_-]+")
     .optional(),
+  /** Unix timestamp of last shadow sync from local config (set by global config, read-only here). */
+  _shadowSyncedAt: z.number().optional(),
   runtime: z.string().optional(),
   agent: z.string().optional(),
   workspace: z.string().optional(),
@@ -270,7 +273,7 @@ function applyProjectDefaults(config: OrchestratorConfig): OrchestratorConfig {
     const inferredPlugin = inferScmPlugin(project);
 
     // Infer SCM from repo if not set
-    if (!project.scm && project.repo.includes("/")) {
+    if (!project.scm && project.repo?.includes("/")) {
       project.scm = { plugin: inferredPlugin };
     }
 
@@ -424,23 +427,47 @@ function applyDefaultReactions(config: OrchestratorConfig): OrchestratorConfig {
  * 4. Home directory locations
  */
 export function findConfigFile(startDir?: string): string | null {
+  const hasProjectsWrapper = (configPath: string): boolean => {
+    try {
+      const raw = readFileSync(configPath, "utf-8");
+      const parsed = parseYaml(raw);
+      return Boolean(
+        parsed &&
+          typeof parsed === "object" &&
+          "projects" in (parsed as Record<string, unknown>),
+      );
+    } catch {
+      return false;
+    }
+  };
+
   // 1. Check environment variable override
   if (process.env["AO_CONFIG_PATH"]) {
     const envPath = resolve(process.env["AO_CONFIG_PATH"]);
-    if (existsSync(envPath)) {
+    if (existsSync(envPath) && hasProjectsWrapper(envPath)) {
       return envPath;
     }
   }
 
   // 2. Search up directory tree from CWD (like git)
+  //    Skip flat local configs (behavior-only, no `projects:` wrapper) — they are
+  //    read via loadLocalProjectConfig(), not through this search path. After
+  //    migration to the hybrid model, the per-project agent-orchestrator.yaml is a
+  //    flat behavior file; the authoritative registry is the global config.
   const searchUpTree = (dir: string): string | null => {
     const configFiles = ["agent-orchestrator.yaml", "agent-orchestrator.yml"];
 
     for (const filename of configFiles) {
       const configPath = resolve(dir, filename);
-      if (existsSync(configPath)) {
-        return configPath;
+      if (!existsSync(configPath)) continue;
+
+      // Peek at file: skip flat local configs (no top-level `projects:` key)
+      if (!hasProjectsWrapper(configPath)) {
+        // Flat local config — skip, keep searching upward
+        continue;
       }
+
+      return configPath;
     }
 
     const parent = resolve(dir, "..");
@@ -459,17 +486,31 @@ export function findConfigFile(startDir?: string): string | null {
   }
 
   // 3. Check explicit startDir if provided
+  //    Same flat-config check as step 2: after migration, project directories
+  //    contain a flat behavior-only config that should not be returned here.
   if (startDir) {
     const files = ["agent-orchestrator.yaml", "agent-orchestrator.yml"];
     for (const filename of files) {
       const path = resolve(startDir, filename);
-      if (existsSync(path)) {
-        return path;
+      if (!existsSync(path)) continue;
+
+      if (!hasProjectsWrapper(path)) {
+        continue;
       }
+
+      return path;
     }
   }
 
-  // 4. Check home directory locations
+  // 4. Check global config path (new hybrid mode: ~/.agent-orchestrator/config.yaml)
+  //    This takes priority over legacy home-directory locations so that users who
+  //    have migrated to the hybrid model always load from the canonical global path.
+  const globalConfigPath = getGlobalConfigPath();
+  if (existsSync(globalConfigPath)) {
+    return globalConfigPath;
+  }
+
+  // 5. Legacy home directory locations (backward compatibility)
   const homePaths = [
     resolve(homedir(), ".agent-orchestrator.yaml"),
     resolve(homedir(), ".agent-orchestrator.yml"),

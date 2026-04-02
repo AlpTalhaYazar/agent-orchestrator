@@ -12,6 +12,8 @@ import {
   type ProjectConfig,
   isOrchestratorSession,
   loadConfig,
+  loadGlobalConfig,
+  isProjectShadowStale,
 } from "@composio/ao-core";
 import { git, getTmuxSessions, getTmuxActivity } from "../lib/shell.js";
 import {
@@ -23,6 +25,11 @@ import {
   reviewDecisionIcon,
   padCol,
 } from "../lib/format.js";
+import {
+  formatPortfolioDegradedReason,
+  formatPortfolioProjectName,
+  formatPortfolioProjectStatus,
+} from "../lib/portfolio-display.js";
 import { getAgentByName, getAgentByNameFromRegistry, getSCMFromRegistry } from "../lib/plugins.js";
 import { getPluginRegistry, getSessionManager } from "../lib/create-session-manager.js";
 
@@ -46,6 +53,7 @@ interface SessionInfo {
 
 interface StatusOptions {
   project?: string;
+  portfolio?: boolean;
   json?: boolean;
   watch?: boolean;
   interval?: string;
@@ -233,6 +241,7 @@ export function registerStatus(program: Command): void {
     .command("status")
     .description("Show all sessions with branch, activity, PR, and CI status")
     .option("-p, --project <id>", "Filter by project ID")
+    .option("--portfolio", "Show status across all portfolio projects")
     .option("--json", "Output as JSON")
     .option("-w, --watch", "Refresh the status view continuously")
     .option("--interval <seconds>", "Refresh interval in seconds (default: 5)")
@@ -259,6 +268,59 @@ export function registerStatus(program: Command): void {
 
         let config: ReturnType<typeof loadConfig>;
         try {
+          if (opts.portfolio) {
+            const { getPortfolio, getPortfolioSessionCounts } = await import("@composio/ao-core");
+            const portfolio = getPortfolio();
+
+            if (portfolio.length === 0) {
+              console.log(chalk.dim("No projects in portfolio."));
+              console.log(
+                chalk.dim("Run `ao start` in a project or `ao project add <path>` to register one."),
+              );
+              return;
+            }
+
+            const counts = await getPortfolioSessionCounts(portfolio);
+
+            if (opts.json) {
+              const jsonData = portfolio.map((p) => ({
+                id: p.id,
+                name: p.name,
+                enabled: p.enabled,
+                degraded: p.degraded,
+                source: p.source,
+                sessions: counts[p.id] || { total: 0, active: 0 },
+              }));
+              console.log(JSON.stringify(jsonData, null, 2));
+              return;
+            }
+
+            console.log(banner("PORTFOLIO STATUS"));
+            console.log();
+
+            for (const p of portfolio) {
+              const count = counts[p.id] || { total: 0, active: 0 };
+              const status = formatPortfolioProjectStatus(p, count);
+              const name = formatPortfolioProjectName(p);
+              const degradedReason = formatPortfolioDegradedReason(p);
+              console.log(`  ${chalk.bold(p.id)}${name}  ${status}  ${count.total} sessions`);
+              if (degradedReason) {
+                console.log(`    ${degradedReason}`);
+              }
+            }
+
+            const totalActive = Object.values(counts).reduce((sum, c) => sum + c.active, 0);
+            const totalSessions = Object.values(counts).reduce((sum, c) => sum + c.total, 0);
+            console.log();
+            console.log(
+              chalk.dim(
+                `  ${totalSessions} session${totalSessions !== 1 ? "s" : ""} across ${portfolio.length} project${portfolio.length !== 1 ? "s" : ""} (${totalActive} active)`,
+              ),
+            );
+            console.log();
+            return;
+          }
+
           config = loadConfig();
         } catch {
           console.log(chalk.yellow("No config found. Run `ao init` first."));
@@ -266,6 +328,8 @@ export function registerStatus(program: Command): void {
           await showFallbackStatus();
           return;
         }
+
+        const globalConfig = loadGlobalConfig();
 
         if (opts.project && !config.projects[opts.project]) {
           console.error(chalk.red(`Unknown project: ${opts.project}`));
@@ -320,6 +384,13 @@ export function registerStatus(program: Command): void {
 
           if (!opts.json) {
             console.log(header(projectConfig.name || projectId));
+            if (globalConfig && isProjectShadowStale(projectId, globalConfig)) {
+              console.log(
+                chalk.yellow(
+                  `  ⚠ local config changed since last \`ao start\` — shadow may be stale. Run \`ao start\` to sync.`,
+                ),
+              );
+            }
           }
 
           if (projectSessions.length === 0) {

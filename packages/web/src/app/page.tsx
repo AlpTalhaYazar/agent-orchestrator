@@ -1,35 +1,25 @@
 import type { Metadata } from "next";
-
 export const dynamic = "force-dynamic";
-import { Dashboard } from "@/components/Dashboard";
-import {
-  getDashboardPageData,
-  getDashboardProjectName,
-  resolveDashboardProjectFilter,
-} from "@/lib/dashboard-page-data";
 
-export async function generateMetadata(props: {
-  searchParams: Promise<{ project?: string }>;
-}): Promise<Metadata> {
-  const searchParams = await props.searchParams;
-  const projectFilter = resolveDashboardProjectFilter(searchParams.project);
-  const projectName = getDashboardProjectName(projectFilter);
-  return { title: { absolute: `ao | ${projectName}` } };
-}
+import { DashboardShell } from "@/components/DashboardShell";
+import { PortfolioPage } from "@/components/PortfolioPage";
+import { getDefaultCloneLocation } from "@/lib/default-location";
+import { loadPortfolioPageData } from "@/lib/portfolio-page-data";
 
-export default async function Home(props: { searchParams: Promise<{ project?: string }> }) {
-  const searchParams = await props.searchParams;
-  const projectFilter = resolveDashboardProjectFilter(searchParams.project);
-  const pageData = await getDashboardPageData(projectFilter);
+export const metadata: Metadata = {
+  title: { absolute: "ao | Agent Orchestrator" },
+};
+
+export default async function Home() {
+  const { projectSummaries, sessions } = await loadPortfolioPageData();
 
   return (
-    <Dashboard
-      initialSessions={pageData.sessions}
-      projectId={pageData.selectedProjectId}
-      projectName={pageData.projectName}
-      projects={pageData.projects}
-      initialGlobalPause={pageData.globalPause}
-      orchestrators={pageData.orchestrators}
-    />
+    <DashboardShell
+      projects={projectSummaries}
+      sessions={sessions}
+      defaultLocation={getDefaultCloneLocation()}
+    >
+      <PortfolioPage projectSummaries={projectSummaries} />
+    </DashboardShell>
   );
 }

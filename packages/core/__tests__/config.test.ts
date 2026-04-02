@@ -19,11 +19,12 @@ describe("Config Loading", () => {
     originalCwd = process.cwd();
     originalEnv = { ...process.env };
 
-    // Clear AO_CONFIG_PATH to ensure test isolation
-    delete process.env.AO_CONFIG_PATH;
-
     // Change to test directory
     process.chdir(testDir);
+
+    process.env["HOME"] = testDir;
+    delete process.env["AO_GLOBAL_CONFIG"];
+    delete process.env["AO_CONFIG_PATH"];
   });
 
   afterEach(() => {
@@ -67,9 +68,41 @@ describe("Config Loading", () => {
       expect(found).toBe(customConfig);
     });
 
+    it("should ignore AO_CONFIG_PATH when it points to a flat local config", () => {
+      const flatConfig = join(testDir, "flat-config.yaml");
+      const wrappedConfig = join(testDir, "agent-orchestrator.yaml");
+
+      writeFileSync(flatConfig, "repo: test/repo\nagent: claude-code\nruntime: tmux\n");
+      writeFileSync(wrappedConfig, "projects: {}");
+
+      process.env["AO_CONFIG_PATH"] = flatConfig;
+
+      const found = findConfigFile();
+      expect(realpathSync(found!)).toBe(realpathSync(wrappedConfig));
+    });
+
     it("should return null if no config found", () => {
       const found = findConfigFile();
       expect(found).toBeNull();
+    });
+
+    it("should skip flat local configs (no projects: wrapper) when searching up tree", () => {
+      // Write a flat behavior-only config (post-migration format)
+      const flatConfig = join(testDir, "agent-orchestrator.yaml");
+      writeFileSync(flatConfig, "repo: org/my-project\nagent: claude-code\nruntime: tmux\n");
+
+      // Should NOT return the flat config — it has no `projects:` key
+      const found = findConfigFile();
+      expect(found).toBeNull();
+    });
+
+    it("should return an old-format config that has a projects: wrapper", () => {
+      const oldFormatConfig = join(testDir, "agent-orchestrator.yaml");
+      writeFileSync(oldFormatConfig, `projects:\n  my-project:\n    repo: org/repo\n    path: ${testDir}\n`);
+
+      const found = findConfigFile();
+      expect(found).not.toBeNull();
+      expect(realpathSync(found!)).toBe(realpathSync(oldFormatConfig));
     });
   });
 
