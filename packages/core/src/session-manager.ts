@@ -41,7 +41,6 @@ import {
   type PluginRegistry,
   type RuntimeHandle,
   type Issue,
-  isOrchestratorSession,
   PR_STATE,
 } from "./types.js";
 import {
@@ -391,11 +390,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     sessionId: string,
     metadata?: Record<string, string> | null,
   ): boolean {
-    const canonicalOrchestratorId = `${project.sessionPrefix}-orchestrator`;
-    return (
-      sessionId === canonicalOrchestratorId ||
-      isOrchestratorSession({ id: sessionId, metadata: metadata ?? undefined })
-    );
+    return isOrchestratorSessionRecord(sessionId, metadata ?? {}, project.sessionPrefix);
   }
 
   function applyMetadataUpdatesToRaw(
