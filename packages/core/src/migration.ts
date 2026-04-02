@@ -94,7 +94,7 @@ export function buildEffectiveConfig(
       scm: behaviorFields["scm"] as SCMConfig | undefined,
       symlinks: behaviorFields["symlinks"] as string[] | undefined,
       postCreate: behaviorFields["postCreate"] as string[] | undefined,
-      agentConfig: behaviorFields["agentConfig"] as AgentSpecificConfig | undefined,
+      agentConfig: (behaviorFields["agentConfig"] as AgentSpecificConfig | undefined) ?? {} as AgentSpecificConfig,
       orchestrator: behaviorFields["orchestrator"] as RoleAgentConfig | undefined,
       worker: behaviorFields["worker"] as RoleAgentConfig | undefined,
       reactions: behaviorFields["reactions"] as Record<string, Partial<ReactionConfig>> | undefined,

@@ -39,6 +39,7 @@ export {
   loadShadowFile,
   saveShadowFile,
   deleteShadowFile,
+  isSecretField,
   filterSecrets,
   matchProjectByCwd,
 } from "./global-config.js";

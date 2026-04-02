@@ -79,9 +79,9 @@ const IS_TTY = Boolean(process.stdin.isTTY && process.stdout.isTTY);
  * Thin CLI wrapper around resolveMultiProjectStart from core.
  * Adds user-facing console output for migration and registration messages.
  */
-function handleMultiProjectStart(
+async function handleMultiProjectStart(
   workingDir: string,
-): { config: OrchestratorConfig; projectId: string } | null {
+): Promise<{ config: OrchestratorConfig; projectId: string } | null> {
   const result = resolveMultiProjectStart(workingDir);
   if (!result) return null;
 
