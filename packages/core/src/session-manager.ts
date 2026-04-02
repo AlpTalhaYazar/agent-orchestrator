@@ -1384,7 +1384,17 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       ? `orchestrator/${sessionId}`
       : project.defaultBranch;
 
-    if (orchestratorConfig.useWorktree && plugins.workspace) {
+    if (orchestratorConfig.useWorktree) {
+      if (!plugins.workspace) {
+        try {
+          deleteMetadata(sessionsDir, sessionId, false);
+        } catch {
+          /* best effort */
+        }
+        throw new Error(
+          `useWorktree requires a workspace plugin but none is configured for project '${orchestratorConfig.projectId}'`,
+        );
+      }
       try {
         const wsInfo = await plugins.workspace.create({
           projectId: orchestratorConfig.projectId,

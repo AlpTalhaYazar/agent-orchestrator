@@ -1996,6 +1996,26 @@ describe("spawn", () => {
     });
 
     describe("useWorktree: true", () => {
+      it("throws when useWorktree is true but no workspace plugin is configured", async () => {
+        const registryNoWorkspace: PluginRegistry = {
+          ...mockRegistry,
+          get: vi.fn().mockImplementation((slot: string) => {
+            if (slot === "runtime") return mockRuntime;
+            if (slot === "agent") return mockAgent;
+            return null; // no workspace plugin
+          }),
+        };
+        const sm = createSessionManager({ config, registry: registryNoWorkspace });
+
+        await expect(
+          sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true }),
+        ).rejects.toThrow("useWorktree requires a workspace plugin");
+
+        // Reserved session metadata should be cleaned up
+        expect(readMetadataRaw(sessionsDir, "app-orchestrator-1")).toBeNull();
+        expect(mockRuntime.create).not.toHaveBeenCalled();
+      });
+
       it("generates a unique orchestrator session ID (app-orchestrator-1)", async () => {
         const sm = createSessionManager({ config, registry: mockRegistry });
 
