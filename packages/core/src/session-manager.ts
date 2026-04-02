@@ -296,10 +296,10 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     // Build the candidate list using name-pattern matching so we never read
     // raw metadata for worker sessions (avoids N file reads on every hot path).
     const canonicalOrchestratorId = `${project.sessionPrefix}-orchestrator`;
-    const orchPattern = new RegExp(`^${escapeRegex(project.sessionPrefix)}-orch-(\\d+)$`);
+    const orchestratorPattern = new RegExp(`^${escapeRegex(project.sessionPrefix)}-orchestrator-(\\d+)$`);
     const candidateIds = new Set<string>([canonicalOrchestratorId]);
     for (const id of listMetadata(sessionsDir)) {
-      if (id === canonicalOrchestratorId || orchPattern.test(id)) {
+      if (id === canonicalOrchestratorId || orchestratorPattern.test(id)) {
         candidateIds.add(id);
       }
     }
@@ -377,11 +377,11 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   ): boolean {
     if (!raw) return false;
     if (raw["role"] === "orchestrator" || sessionId.endsWith("-orchestrator")) return true;
-    // Check the -orch-N pattern only when the prefix is known so the regex is
-    // anchored to the project prefix, preventing false-positives when the
-    // user-configured sessionPrefix itself ends with "-orch".
+    // Check the -orchestrator-N pattern only when the prefix is known so the
+    // regex is anchored to the project prefix, preventing false-positives when
+    // the user-configured sessionPrefix itself ends with "-orchestrator".
     if (sessionPrefix) {
-      return new RegExp(`^${escapeRegex(sessionPrefix)}-orch-\\d+$`).test(sessionId);
+      return new RegExp(`^${escapeRegex(sessionPrefix)}-orchestrator-\\d+$`).test(sessionId);
     }
     return false;
   }
@@ -726,22 +726,22 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
   }
 
   /**
-   * Reserve a unique orchestrator identity ({prefix}-orch-N) for a worktree-based orchestrator.
+   * Reserve a unique orchestrator identity ({prefix}-orchestrator-N) for a worktree-based orchestrator.
    * Unlike worker sessions, orchestrator IDs are assigned locally without remote branch checks.
    */
   function reserveNextOrchestratorIdentity(
     project: ProjectConfig,
     sessionsDir: string,
   ): { num: number; sessionId: string; tmuxName: string | undefined } {
-    const orchPrefix = `${project.sessionPrefix}-orch`;
+    const orchestratorPrefix = `${project.sessionPrefix}-orchestrator`;
     const usedNumbers = new Set<number>();
 
-    const orchPattern = new RegExp(`^${escapeRegex(orchPrefix)}-(\\d+)$`);
+    const orchestratorPattern = new RegExp(`^${escapeRegex(orchestratorPrefix)}-(\\d+)$`);
     for (const sessionName of [
       ...listMetadata(sessionsDir),
       ...listArchivedSessionIds(sessionsDir),
     ]) {
-      const match = sessionName.match(orchPattern);
+      const match = sessionName.match(orchestratorPattern);
       if (match) {
         const parsed = Number.parseInt(match[1], 10);
         if (!Number.isNaN(parsed)) usedNumbers.add(parsed);
@@ -751,9 +751,9 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     let num = 1;
     for (let attempts = 0; attempts < 10_000; attempts++) {
       if (!usedNumbers.has(num)) {
-        const sessionId = `${orchPrefix}-${num}`;
+        const sessionId = `${orchestratorPrefix}-${num}`;
         const tmuxName = config.configPath
-          ? generateTmuxName(config.configPath, orchPrefix, num)
+          ? generateTmuxName(config.configPath, orchestratorPrefix, num)
           : undefined;
         if (reserveSessionId(sessionsDir, sessionId)) {
           return { num, sessionId, tmuxName };
@@ -763,7 +763,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     }
 
     throw new Error(
-      `Failed to reserve orchestrator session ID after 10000 attempts (prefix: ${orchPrefix})`,
+      `Failed to reserve orchestrator session ID after 10000 attempts (prefix: ${orchestratorPrefix})`,
     );
   }
 
@@ -1292,7 +1292,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     const sessionsDir = getProjectSessionsDir(project);
 
     // When useWorktree is true, reserve a new unique orchestrator identity
-    // (e.g. {prefix}-orch-1, {prefix}-orch-2) and create an isolated worktree.
+    // (e.g. {prefix}-orchestrator-1, {prefix}-orchestrator-2) and create an isolated worktree.
     // Otherwise, use the deterministic single-orchestrator session ID.
     let sessionId: string;
     let tmuxName: string | undefined;
