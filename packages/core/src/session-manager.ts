@@ -1441,9 +1441,31 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       }
     }
 
+    // Helper: undo worktree + metadata if anything between workspace creation
+    // and a fully-written metadata record fails.
+    const cleanupWorktreeAndMetadata = async (): Promise<void> => {
+      if (orchestratorConfig.useWorktree && plugins.workspace) {
+        try {
+          await plugins.workspace.destroy(workspacePath);
+        } catch {
+          /* best effort */
+        }
+      }
+      try {
+        deleteMetadata(sessionsDir, sessionId, false);
+      } catch {
+        /* best effort */
+      }
+    };
+
     // Setup agent hooks for automatic metadata updates
-    if (plugins.agent.setupWorkspaceHooks) {
-      await plugins.agent.setupWorkspaceHooks(workspacePath, { dataDir: sessionsDir });
+    try {
+      if (plugins.agent.setupWorkspaceHooks) {
+        await plugins.agent.setupWorkspaceHooks(workspacePath, { dataDir: sessionsDir });
+      }
+    } catch (err) {
+      await cleanupWorktreeAndMetadata();
+      throw err;
     }
 
     // Write system prompt to a file to avoid shell/tmux truncation.
@@ -1451,27 +1473,38 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     // via tmux send-keys or paste-buffer. File-based approach is reliable.
     let systemPromptFile: string | undefined;
     if (orchestratorConfig.systemPrompt) {
-      const baseDir = getProjectBaseDir(config.configPath, project.path);
-      mkdirSync(baseDir, { recursive: true });
-      systemPromptFile = join(baseDir, `orchestrator-prompt-${sessionId}.md`);
-      writeFileSync(systemPromptFile, orchestratorConfig.systemPrompt, "utf-8");
+      try {
+        const baseDir = getProjectBaseDir(config.configPath, project.path);
+        mkdirSync(baseDir, { recursive: true });
+        systemPromptFile = join(baseDir, `orchestrator-prompt-${sessionId}.md`);
+        writeFileSync(systemPromptFile, orchestratorConfig.systemPrompt, "utf-8");
+      } catch (err) {
+        await cleanupWorktreeAndMetadata();
+        throw err;
+      }
     }
 
-    const reusableOpenCodeSessionId =
-      plugins.agent.name === "opencode" && orchestratorSessionStrategy === "reuse"
-        ? await resolveOpenCodeSessionReuse({
-            sessionsDir,
-            criteria: { sessionId },
-            strategy: "reuse",
-          })
-        : undefined;
-    if (plugins.agent.name === "opencode" && orchestratorSessionStrategy === "delete") {
-      await resolveOpenCodeSessionReuse({
-        sessionsDir,
-        criteria: { sessionId },
-        strategy: "delete",
-        includeTitleDiscoveryForSessionId: true,
-      });
+    let reusableOpenCodeSessionId: string | undefined;
+    try {
+      reusableOpenCodeSessionId =
+        plugins.agent.name === "opencode" && orchestratorSessionStrategy === "reuse"
+          ? await resolveOpenCodeSessionReuse({
+              sessionsDir,
+              criteria: { sessionId },
+              strategy: "reuse",
+            })
+          : undefined;
+      if (plugins.agent.name === "opencode" && orchestratorSessionStrategy === "delete") {
+        await resolveOpenCodeSessionReuse({
+          sessionsDir,
+          criteria: { sessionId },
+          strategy: "delete",
+          includeTitleDiscoveryForSessionId: true,
+        });
+      }
+    } catch (err) {
+      await cleanupWorktreeAndMetadata();
+      throw err;
     }
 
     // Get agent launch config — uses systemPromptFile, no issue/tracker interaction.
@@ -1515,20 +1548,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         },
       });
     } catch (err) {
-      // Destroy the worktree we explicitly created — no need for the
-      // shouldDestroyWorkspacePath safety guard here since we own this worktree.
-      if (orchestratorConfig.useWorktree && plugins.workspace) {
-        try {
-          await plugins.workspace.destroy(workspacePath);
-        } catch {
-          /* best effort */
-        }
-      }
-      try {
-        deleteMetadata(sessionsDir, sessionId, false);
-      } catch {
-        /* best effort */
-      }
+      await cleanupWorktreeAndMetadata();
       throw err;
     }
 
