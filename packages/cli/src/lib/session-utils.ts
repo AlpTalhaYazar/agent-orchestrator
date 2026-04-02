@@ -32,8 +32,14 @@ export function isOrchestratorSessionName(
 ): boolean {
   if (projectId) {
     const project = config.projects[projectId];
-    if (project && sessionName === `${project.sessionPrefix || projectId}-orchestrator`) {
-      return true;
+    if (project) {
+      const prefix = project.sessionPrefix || projectId;
+      if (
+        sessionName === `${prefix}-orchestrator` ||
+        new RegExp(`^${escapeRegex(prefix)}-orchestrator-\\d+$`).test(sessionName)
+      ) {
+        return true;
+      }
     }
   }
 
@@ -41,7 +47,10 @@ export function isOrchestratorSessionName(
     [string, OrchestratorConfig["projects"][string]]
   >) {
     const prefix = project.sessionPrefix || id;
-    if (sessionName === `${prefix}-orchestrator`) {
+    if (
+      sessionName === `${prefix}-orchestrator` ||
+      new RegExp(`^${escapeRegex(prefix)}-orchestrator-\\d+$`).test(sessionName)
+    ) {
       return true;
     }
   }

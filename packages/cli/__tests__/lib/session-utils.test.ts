@@ -146,4 +146,23 @@ describe("isOrchestratorSessionName", () => {
     const config = makeConfig({ "my-app": { sessionPrefix: "app" } });
     expect(isOrchestratorSessionName(config, "app-12", "my-app")).toBe(false);
   });
+
+  it("matches worktree orchestrator IDs (orchestrator-N) for a known project", () => {
+    const config = makeConfig({ "my-app": { sessionPrefix: "app" } });
+    expect(isOrchestratorSessionName(config, "app-orchestrator-1", "my-app")).toBe(true);
+    expect(isOrchestratorSessionName(config, "app-orchestrator-42", "my-app")).toBe(true);
+  });
+
+  it("matches worktree orchestrator IDs without an explicit project", () => {
+    const config = makeConfig({ "my-app": { sessionPrefix: "app" } });
+    expect(isOrchestratorSessionName(config, "app-orchestrator-1")).toBe(true);
+  });
+
+  it("does not false-positive on a worker when prefix ends with -orchestrator", () => {
+    const config = makeConfig({ "my-app": { sessionPrefix: "my-orchestrator" } });
+    // my-orchestrator-1 is a worker session, not a worktree orchestrator
+    expect(isOrchestratorSessionName(config, "my-orchestrator-1", "my-app")).toBe(false);
+    // my-orchestrator-orchestrator is the canonical orchestrator
+    expect(isOrchestratorSessionName(config, "my-orchestrator-orchestrator", "my-app")).toBe(true);
+  });
 });
