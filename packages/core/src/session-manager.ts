@@ -1593,6 +1593,14 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       } catch {
         /* best effort */
       }
+      // Clean up worktree created for this session
+      if (orchestratorConfig.useWorktree && plugins.workspace) {
+        try {
+          await plugins.workspace.destroy(workspacePath);
+        } catch {
+          /* best effort */
+        }
+      }
       try {
         deleteMetadata(sessionsDir, sessionId, false);
       } catch {

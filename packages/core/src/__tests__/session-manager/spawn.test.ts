@@ -2125,6 +2125,39 @@ describe("spawn", () => {
         expect(readMetadataRaw(sessionsDir, "app-orchestrator-1")).toBeNull();
       });
 
+      it("destroys the worktree when post-launch setup fails", async () => {
+        const worktreePath = join(tmpDir, "orchestrator-ws-postlaunch-fail");
+        (mockWorkspace.create as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+          path: worktreePath,
+          branch: "orchestrator/app-orchestrator-1",
+          sessionId: "app-orchestrator-1",
+          projectId: "my-app",
+        });
+        const postLaunchError = new Error("post-launch setup failed");
+        const agentWithPostLaunch: typeof mockAgent = {
+          ...mockAgent,
+          postLaunchSetup: vi.fn().mockRejectedValueOnce(postLaunchError),
+        };
+        const registryWithPostLaunch: PluginRegistry = {
+          ...mockRegistry,
+          get: vi.fn().mockImplementation((slot: string) => {
+            if (slot === "runtime") return mockRuntime;
+            if (slot === "agent") return agentWithPostLaunch;
+            if (slot === "workspace") return mockWorkspace;
+            return null;
+          }),
+        };
+        const sm = createSessionManager({ config, registry: registryWithPostLaunch });
+
+        await expect(
+          sm.spawnOrchestrator({ projectId: "my-app", useWorktree: true }),
+        ).rejects.toThrow("post-launch setup failed");
+
+        expect(mockRuntime.destroy).toHaveBeenCalled();
+        expect(mockWorkspace.destroy).toHaveBeenCalledWith(worktreePath);
+        expect(readMetadataRaw(sessionsDir, "app-orchestrator-1")).toBeNull();
+      });
+
       it("blocks spawn while the project is globally paused (orchestrator-N orchestrator)", async () => {
         // Pause set by a worktree-based orchestrator
         writeMetadata(sessionsDir, "app-orchestrator-1", {
