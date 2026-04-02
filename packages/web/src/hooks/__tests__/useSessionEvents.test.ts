@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useSessionEvents } from "../useSessionEvents";
-import type { DashboardSession, GlobalPauseState } from "../../lib/types";
+import type { AttentionLevel, DashboardSession, GlobalPauseState } from "../../lib/types";
 import { makeSession } from "../../__tests__/helpers";
 
 describe("useSessionEvents", () => {
@@ -765,6 +765,27 @@ describe("useSessionEvents", () => {
       });
 
       expect(result.current.sseAttentionLevels).toBe(firstLevels);
+    });
+
+    it("resets sseAttentionLevels to new initialAttentionLevels when initialSessions changes", () => {
+      const sessions1 = makeSessions(1);
+      let currentSessions = sessions1;
+      let currentLevels: Record<string, AttentionLevel> | undefined = { "session-0": "respond" as const };
+
+      const { result, rerender } = renderHook(() =>
+        useSessionEvents(currentSessions, null, undefined, currentLevels),
+      );
+
+      expect(result.current.sseAttentionLevels).toEqual({ "session-0": "respond" });
+
+      const sessions2 = makeSessions(1).map((s) => ({ ...s, id: "session-new" }));
+      const levels2 = { "session-new": "working" as const };
+      currentSessions = sessions2;
+      currentLevels = levels2;
+      rerender();
+
+      expect(result.current.sseAttentionLevels).toEqual({ "session-new": "working" });
+      expect(result.current.sseAttentionLevels["session-0"]).toBeUndefined();
     });
   });
 });

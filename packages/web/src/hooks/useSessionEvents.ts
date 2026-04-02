@@ -30,14 +30,21 @@ interface State {
 }
 
 type Action =
-  | { type: "reset"; sessions: DashboardSession[]; globalPause: GlobalPauseState | null }
+  | { type: "reset"; sessions: DashboardSession[]; globalPause: GlobalPauseState | null; sseAttentionLevels?: SSEAttentionMap }
   | { type: "snapshot"; patches: SSESnapshotEvent["sessions"] }
   | { type: "setConnection"; status: ConnectionStatus };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "reset":
-      return { ...state, sessions: action.sessions, globalPause: action.globalPause };
+      return {
+        ...state,
+        sessions: action.sessions,
+        globalPause: action.globalPause,
+        ...(action.sseAttentionLevels !== undefined
+          ? { sseAttentionLevels: action.sseAttentionLevels }
+          : {}),
+      };
     case "setConnection":
       return { ...state, connectionStatus: action.status };
     case "snapshot": {
@@ -106,6 +113,8 @@ export function useSessionEvents(
     sseAttentionLevels: initialAttentionLevels ?? ({} as SSEAttentionMap),
   });
   const sessionsRef = useRef(state.sessions);
+  const initialAttentionLevelsRef = useRef(initialAttentionLevels);
+  initialAttentionLevelsRef.current = initialAttentionLevels;
   const refreshingRef = useRef(false);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingMembershipKeyRef = useRef<string | null>(null);
@@ -117,7 +126,12 @@ export function useSessionEvents(
   }, [state.sessions]);
 
   useEffect(() => {
-    dispatch({ type: "reset", sessions: initialSessions, globalPause: initialGlobalPause ?? null });
+    dispatch({
+      type: "reset",
+      sessions: initialSessions,
+      globalPause: initialGlobalPause ?? null,
+      sseAttentionLevels: initialAttentionLevelsRef.current ?? ({} as SSEAttentionMap),
+    });
   }, [initialSessions, initialGlobalPause]);
 
   useEffect(() => {
