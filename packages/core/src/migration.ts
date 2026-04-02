@@ -41,6 +41,8 @@ export function buildEffectiveConfig(
   globalConfigPath: string,
 ): OrchestratorConfig {
   const projects: Record<string, ProjectConfig> = {};
+  const mergedNotifiers: OrchestratorConfig["notifiers"] = {};
+  const mergedRouting: Partial<Record<EventPriority, string[]>> = {};
 
   for (const [projectId, entry] of Object.entries(globalConfig.projects)) {
     const projectPath = expandHome(entry.path);
@@ -99,6 +101,13 @@ export function buildEffectiveConfig(
       opencodeIssueSessionStrategy: behaviorFields["opencodeIssueSessionStrategy"] as ProjectConfig["opencodeIssueSessionStrategy"],
       decomposer: behaviorFields["decomposer"] as ProjectConfig["decomposer"],
     };
+
+    if (behaviorFields["notifiers"]) {
+      Object.assign(mergedNotifiers, behaviorFields["notifiers"] as OrchestratorConfig["notifiers"]);
+    }
+    if (behaviorFields["notificationRouting"]) {
+      Object.assign(mergedRouting, behaviorFields["notificationRouting"] as Record<string, string[]>);
+    }
   }
 
   return {
@@ -113,12 +122,13 @@ export function buildEffectiveConfig(
     projectOrder: globalConfig.projectOrder,
     // These are global infrastructure settings (which channels exist, how
     // priorities route). Per-project reaction overrides are on ProjectConfig.
-    notifiers: {},
+    notifiers: mergedNotifiers,
     notificationRouting: {
       urgent: ["desktop", "composio"],
       action: ["desktop", "composio"],
       warning: ["composio"],
       info: ["composio"],
+      ...mergedRouting,
     } as Record<EventPriority, string[]>,
     reactions: {},
     plugins: globalConfig.plugins as OrchestratorConfig["plugins"],

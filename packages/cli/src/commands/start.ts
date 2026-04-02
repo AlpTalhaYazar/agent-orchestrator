@@ -1157,6 +1157,7 @@ export function registerStart(program: Command): void {
           orchestrator?: boolean;
           rebuild?: boolean;
           interactive?: boolean;
+          orchestratorSuffix?: string;
         },
       ) => {
         try {
@@ -1288,7 +1289,7 @@ export function registerStart(program: Command): void {
 
                 if (config.globalConfigPath) {
                   // Multi-project mode: pass suffix to runStartup
-                  opts = { ...opts, orchestratorSuffix: String(suffix) } as typeof opts;
+                  opts = { ...opts, orchestratorSuffix: String(suffix) };
                   console.log(chalk.green(`\n✓ Starting orchestrator-${suffix} for "${projectId}"\n`));
                 } else {
                   // Legacy single-file mode: add a new project entry with different prefix

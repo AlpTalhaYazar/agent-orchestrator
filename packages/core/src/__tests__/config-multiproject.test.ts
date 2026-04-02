@@ -64,11 +64,12 @@ describe("loadConfig — multi-project path", () => {
     expect(config.globalConfigPath).toBeDefined();
   });
 
-  it("loads with empty project registry", () => {
+  it("throws ConfigNotFoundError when global config has no projects and no local config exists", () => {
     setupGlobalConfig({});
 
-    const config = loadConfig();
-    expect(Object.keys(config.projects)).toHaveLength(0);
+    // Global config exists but is empty — should fall through to local config search,
+    // which also finds nothing and throws.
+    expect(() => loadConfig()).toThrow();
   });
 
   it("applies defaults to projects from global config", () => {
@@ -130,6 +131,33 @@ describe("loadConfig — multi-project path", () => {
   it("throws I/O error when explicit path does not exist", () => {
     expect(() => loadConfig("/nonexistent/path.yaml")).toThrow();
   });
+
+  it("throws ZodError when explicit path has schema error and no global config exists", () => {
+    // No global config set up — point to nonexistent location
+    process.env["AO_GLOBAL_CONFIG_PATH"] = join(testDir, "nonexistent", "config.yaml");
+
+    const flatPath = join(projectDir, "flat.yaml");
+    writeFileSync(flatPath, stringifyYaml({ repo: "org/ao" }), "utf-8");
+
+    // Should throw the original ZodError since global config is absent
+    expect(() => loadConfig(flatPath)).toThrow();
+  });
+
+  it("falls back to local config when global config has zero projects", () => {
+    // Global config exists but has no projects
+    setupGlobalConfig({});
+
+    const localPath = join(projectDir, "agent-orchestrator.yaml");
+    writeFileSync(localPath, stringifyYaml({
+      projects: {
+        fallback: { name: "Fallback", repo: "org/fb", path: projectDir },
+      },
+    }), "utf-8");
+    process.env["AO_CONFIG_PATH"] = localPath;
+
+    const config = loadConfig();
+    expect(config.projects["fallback"]).toBeDefined();
+  });
 });
 
 describe("loadConfigWithPath — multi-project path", () => {
@@ -140,5 +168,43 @@ describe("loadConfigWithPath — multi-project path", () => {
     const { config, path } = loadConfigWithPath();
     expect(config.projects["ao"]).toBeDefined();
     expect(path).toContain("config.yaml");
+  });
+
+  it("returns local config when explicit path is provided", () => {
+    const localPath = join(projectDir, "agent-orchestrator.yaml");
+    writeFileSync(localPath, stringifyYaml({
+      projects: {
+        local: { name: "Local", repo: "org/local", path: projectDir },
+      },
+    }), "utf-8");
+
+    const { config, path } = loadConfigWithPath(localPath);
+    expect(config.projects["local"]).toBeDefined();
+    expect(path).toBe(localPath);
+  });
+
+  it("falls back to global config when explicit path has ZodError", () => {
+    setupGlobalConfig({ ao: { name: "AO", path: projectDir } });
+    saveShadowFile("ao", { repo: "org/ao", defaultBranch: "main" });
+
+    const flatPath = join(projectDir, "flat.yaml");
+    writeFileSync(flatPath, stringifyYaml({ repo: "org/ao" }), "utf-8");
+
+    const { config, path } = loadConfigWithPath(flatPath);
+    expect(config.projects["ao"]).toBeDefined();
+    expect(path).toContain("config.yaml");
+  });
+
+  it("throws ZodError when explicit path fails and no global config exists", () => {
+    process.env["AO_GLOBAL_CONFIG_PATH"] = join(testDir, "nonexistent", "config.yaml");
+
+    const flatPath = join(projectDir, "flat.yaml");
+    writeFileSync(flatPath, stringifyYaml({ repo: "org/ao" }), "utf-8");
+
+    expect(() => loadConfigWithPath(flatPath)).toThrow();
+  });
+
+  it("throws I/O error when explicit path is missing (not a ZodError)", () => {
+    expect(() => loadConfigWithPath("/nonexistent/path.yaml")).toThrow();
   });
 });

@@ -542,7 +542,7 @@ export function loadConfig(configPath?: string): OrchestratorConfig {
 
   // 2. Try global config (multi-project mode)
   const effective = loadFromGlobalConfig();
-  if (effective) return effective;
+  if (effective && Object.keys(effective.projects).length > 0) return effective;
 
   // 3. Fall back to local config search
   const path = findConfigFile();
