@@ -194,9 +194,7 @@ export function isOrchestratorSession(session: {
   metadata?: Record<string, string>;
 }): boolean {
   return (
-    session.metadata?.["role"] === "orchestrator" ||
-    session.id.endsWith("-orchestrator") ||
-    /-(orch-\d+)$/.test(session.id)
+    session.metadata?.["role"] === "orchestrator" || session.id.endsWith("-orchestrator")
   );
 }
 
