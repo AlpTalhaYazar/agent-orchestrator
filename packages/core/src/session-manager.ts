@@ -59,7 +59,6 @@ import {
   getWorktreesDir,
   getProjectBaseDir,
   generateTmuxName,
-  generateConfigHash,
   validateAndStoreOrigin,
 } from "./paths.js";
 import { asValidOpenCodeSessionId } from "./opencode-session-id.js";

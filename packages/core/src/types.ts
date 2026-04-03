@@ -191,10 +191,13 @@ export interface Session {
 
 export function isOrchestratorSession(
   session: { id: SessionId; metadata?: Record<string, string> },
-  sessionPrefix: string,
+  sessionPrefix?: string,
 ): boolean {
   if (session.metadata?.["role"] === "orchestrator" || session.id.endsWith("-orchestrator")) {
     return true;
+  }
+  if (!sessionPrefix) {
+    return false;
   }
   return new RegExp(
     `^${sessionPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-orchestrator-\\d+$`,
