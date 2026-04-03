@@ -165,4 +165,16 @@ describe("isOrchestratorSessionName", () => {
     // my-orchestrator-orchestrator is the canonical orchestrator
     expect(isOrchestratorSessionName(config, "my-orchestrator-orchestrator", "my-app")).toBe(true);
   });
+
+  it("does not cross-project false-positive when one prefix is another's {prefix}-orchestrator", () => {
+    // project A prefix "app", project B prefix "app-orchestrator"
+    // "app-orchestrator-1" is a worker of B, NOT an orchestrator of A
+    const config = makeConfig({
+      "project-a": { sessionPrefix: "app" },
+      "project-b": { sessionPrefix: "app-orchestrator" },
+    });
+    expect(isOrchestratorSessionName(config, "app-orchestrator-1")).toBe(false);
+    // "app-orchestrator-orchestrator-1" IS an orchestrator of B
+    expect(isOrchestratorSessionName(config, "app-orchestrator-orchestrator-1")).toBe(true);
+  });
 });

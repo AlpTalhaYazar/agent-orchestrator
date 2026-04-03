@@ -43,6 +43,17 @@ export function isOrchestratorSessionName(
     }
   }
 
+  // If sessionName is a numbered worker for any configured project, it is not an orchestrator.
+  // This prevents cross-project false positives where one project's prefix is another's
+  // {prefix}-orchestrator (e.g. prefix "app" matching "app-orchestrator-1" as orchestrator
+  // when "app-orchestrator-1" is actually a worker for a project with prefix "app-orchestrator").
+  for (const [id, project] of Object.entries(config.projects) as Array<
+    [string, OrchestratorConfig["projects"][string]]
+  >) {
+    const prefix = project.sessionPrefix || id;
+    if (matchesPrefix(sessionName, prefix)) return false;
+  }
+
   for (const [id, project] of Object.entries(config.projects) as Array<
     [string, OrchestratorConfig["projects"][string]]
   >) {
