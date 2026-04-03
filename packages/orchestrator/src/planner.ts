@@ -1,8 +1,5 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { writeFile, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import type {
   RepoContext,
   PlanOutput,
@@ -55,17 +52,11 @@ async function invokeViaStdin(
   prompt: string,
   model?: string,
 ): Promise<string> {
-  // Write prompt to temp file, then cat into stdin
-  const tmpDir = await mkdtemp(join(tmpdir(), "ao-planner-"));
-  const promptFile = join(tmpDir, "prompt.txt");
-  await writeFile(promptFile, prompt, "utf-8");
-
-  try {
-    const args = buildCliArgs(cli, undefined, model);
-    return await new Promise<string>((resolve, reject) => {
-      const child = spawn(cli, args, {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+  const args = buildCliArgs(cli, undefined, model);
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn(cli, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
       let stdout = "";
       let stderr = "";
@@ -99,9 +90,6 @@ async function invokeViaStdin(
       child.stdin?.write(prompt);
       child.stdin?.end();
     });
-  } finally {
-    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-  }
 }
 
 function buildCliArgs(

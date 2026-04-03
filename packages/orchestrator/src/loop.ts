@@ -76,6 +76,11 @@ export async function orchestrate(
     const pendingSubtasks = allSubtasks.filter((s) => s.status === "pending");
     if (pendingSubtasks.length === 0) break;
 
+    // Fire onWorkerStart for each subtask about to be dispatched
+    for (const subtask of pendingSubtasks) {
+      callbacks?.onWorkerStart?.(subtask);
+    }
+
     // Dispatch workers
     const roundResults = await dispatchWorkers(
       pendingSubtasks,

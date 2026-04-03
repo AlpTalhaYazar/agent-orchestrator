@@ -16,4 +16,4 @@ registerRun(program);
 registerPlan(program);
 registerContext(program);
 
-program.parse();
+program.parseAsync();

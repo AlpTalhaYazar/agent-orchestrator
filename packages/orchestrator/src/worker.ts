@@ -18,7 +18,20 @@ const KILL_GRACE_MS = 5000;
 export function buildExecutionOrder(subtasks: Subtask[]): Subtask[][] {
   if (subtasks.length === 0) return [];
 
-  const idToSubtask = new Map(subtasks.map((s) => [s.id, s]));
+  const knownIds = new Set(subtasks.map((s) => s.id));
+
+  // Validate all dependency references exist
+  for (const subtask of subtasks) {
+    for (const depId of subtask.dependencies) {
+      if (!knownIds.has(depId)) {
+        throw new Error(
+          `Subtask "${subtask.id}" depends on unknown subtask "${depId}". ` +
+          `Known IDs: ${[...knownIds].join(", ")}`,
+        );
+      }
+    }
+  }
+
   const assigned = new Map<string, number>(); // id -> wave index
   const waves: Subtask[][] = [];
 
@@ -151,7 +164,6 @@ export async function executeWorker(
       child = spawn(cli, args, {
         cwd: repoPath,
         stdio: ["pipe", "pipe", "pipe"],
-        shell: true,
         detached: true,
       });
     } catch (err: unknown) {
@@ -280,16 +292,16 @@ export async function dispatchWorkers(
       });
     }
 
-    // Get upstream results for this wave's subtasks
-    const upstreamResults = allResults.filter((r) =>
-      wave.some((s) => s.dependencies.includes(r.subtaskId)),
-    );
-
     // Execute with concurrency limit
     const waveResults = await executeWithLimit(
       runnable,
       config.workers.max_parallel,
       async (subtask) => {
+        // Filter upstream results to only this subtask's dependencies
+        const upstreamResults = allResults.filter((r) =>
+          subtask.dependencies.includes(r.subtaskId),
+        );
+
         subtask.status = "running";
         const result = await executeWorker(
           subtask,
