@@ -1237,20 +1237,6 @@ export function registerStart(program: Command): void {
             ({ projectId, project } = await resolveProject(config, projectArg));
           }
 
-          // Auto-register in portfolio (best-effort, never blocks startup)
-          try {
-            const { registerProject: portfolioRegister, refreshProject: portfolioRefresh, getPortfolio: getPortfolioList } = await import("@composio/ao-core");
-            const portfolio = getPortfolioList();
-            const existing = portfolio.find(p => p.configProjectKey === projectId && p.configPath === config.configPath);
-            if (existing) {
-              portfolioRefresh(existing.id, config.configPath);
-            } else {
-              portfolioRegister(project.path, projectId);
-            }
-          } catch {
-            // Portfolio registration is best-effort
-          }
-
           // ── Hybrid local+shadow sync (Option C) ──
           // On every `ao start`, sync the local project config into the global
           // registry shadow so remote commands and the dashboard always have
