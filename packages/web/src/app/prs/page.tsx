@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { PullRequestsPage } from "@/components/PullRequestsPage";
+import nextDynamic from "next/dynamic";
 import {
   getDashboardPageData,
   getDashboardProjectName,
@@ -7,6 +7,17 @@ import {
 } from "@/lib/dashboard-page-data";
 
 export const dynamic = "force-dynamic";
+
+const PullRequestsPage = nextDynamic(
+  () => import("@/components/PullRequestsPage").then((m) => m.PullRequestsPage),
+  {
+    loading: () => (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg-base)]">
+        <div className="text-[13px] text-[var(--color-text-tertiary)]">Loading pull requests…</div>
+      </div>
+    ),
+  },
+);
 
 export async function generateMetadata(props: {
   searchParams: Promise<{ project?: string }>;

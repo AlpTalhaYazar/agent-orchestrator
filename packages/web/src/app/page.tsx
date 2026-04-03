@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
-
-export const dynamic = "force-dynamic";
-import { Dashboard } from "@/components/Dashboard";
+import nextDynamic from "next/dynamic";
 import {
   getDashboardPageData,
   getDashboardProjectName,
   resolveDashboardProjectFilter,
 } from "@/lib/dashboard-page-data";
+
+export const dynamic = "force-dynamic";
+
+const Dashboard = nextDynamic(() => import("@/components/Dashboard").then((m) => m.Dashboard), {
+  loading: () => (
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg-base)]">
+      <div className="text-[13px] text-[var(--color-text-tertiary)]">Loading dashboard…</div>
+    </div>
+  ),
+});
 
 export async function generateMetadata(props: {
   searchParams: Promise<{ project?: string }>;
