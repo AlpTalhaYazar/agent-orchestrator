@@ -1363,7 +1363,8 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     // and a fully-written metadata record fails.
     const cleanupWorktreeAndMetadata = async (): Promise<void> => {
       try {
-        await plugins.workspace.destroy(workspacePath);
+        // plugins.workspace is guaranteed non-null here: we threw above if it was null
+        await plugins.workspace!.destroy(workspacePath);
       } catch {
         /* best effort */
       }
@@ -1531,7 +1532,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
       }
       // Clean up worktree created for this session
       try {
-        await plugins.workspace.destroy(workspacePath);
+        await plugins.workspace!.destroy(workspacePath);
       } catch {
         /* best effort */
       }
