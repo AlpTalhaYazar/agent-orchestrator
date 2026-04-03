@@ -11,7 +11,7 @@
  * Reference: scripts/claude-ao-session, scripts/send-to-session
  */
 
-import { statSync, existsSync, readdirSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
+import { statSync, existsSync, readdirSync, writeFileSync, mkdirSync, utimesSync, unlinkSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -1360,7 +1360,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
 
     // Helper: undo worktree + metadata if anything between workspace creation
     // and a fully-written metadata record fails.
-    const cleanupWorktreeAndMetadata = async (): Promise<void> => {
+    const cleanupWorktreeAndMetadata = async (promptFile?: string): Promise<void> => {
       try {
         // plugins.workspace is guaranteed non-null here: we threw above if it was null
         await plugins.workspace!.destroy(workspacePath);
@@ -1371,6 +1371,13 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         deleteMetadata(sessionsDir, sessionId, false);
       } catch {
         /* best effort */
+      }
+      if (promptFile) {
+        try {
+          unlinkSync(promptFile);
+        } catch {
+          /* best effort */
+        }
       }
     };
 
@@ -1395,7 +1402,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         systemPromptFile = join(baseDir, `orchestrator-prompt-${sessionId}.md`);
         writeFileSync(systemPromptFile, orchestratorConfig.systemPrompt, "utf-8");
       } catch (err) {
-        await cleanupWorktreeAndMetadata();
+        await cleanupWorktreeAndMetadata(systemPromptFile);
         throw err;
       }
     }
@@ -1419,7 +1426,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         });
       }
     } catch (err) {
-      await cleanupWorktreeAndMetadata();
+      await cleanupWorktreeAndMetadata(systemPromptFile);
       throw err;
     }
 
@@ -1464,7 +1471,7 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         },
       });
     } catch (err) {
-      await cleanupWorktreeAndMetadata();
+      await cleanupWorktreeAndMetadata(systemPromptFile);
       throw err;
     }
 
@@ -1539,6 +1546,13 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         deleteMetadata(sessionsDir, sessionId, false);
       } catch {
         /* best effort */
+      }
+      if (systemPromptFile) {
+        try {
+          unlinkSync(systemPromptFile);
+        } catch {
+          /* best effort */
+        }
       }
       throw err;
     }

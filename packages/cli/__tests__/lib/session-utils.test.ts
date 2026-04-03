@@ -177,4 +177,18 @@ describe("isOrchestratorSessionName", () => {
     // "app-orchestrator-orchestrator-1" IS an orchestrator of B
     expect(isOrchestratorSessionName(config, "app-orchestrator-orchestrator-1")).toBe(true);
   });
+
+  it("does not cross-project false-positive when projectId is provided", () => {
+    // project A prefix "app", project B prefix "app-orchestrator"
+    // "app-orchestrator-1" is a worker of B — must not be classified as orchestrator of A
+    // even when called with projectId="project-a"
+    const config = makeConfig({
+      "project-a": { sessionPrefix: "app" },
+      "project-b": { sessionPrefix: "app-orchestrator" },
+    });
+    expect(isOrchestratorSessionName(config, "app-orchestrator-1", "project-a")).toBe(false);
+    // The canonical orchestrator of A is still recognized
+    expect(isOrchestratorSessionName(config, "app-orchestrator", "project-a")).toBe(true);
+    expect(isOrchestratorSessionName(config, "app-orchestrator-2", "project-a")).toBe(false);
+  });
 });
