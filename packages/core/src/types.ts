@@ -189,13 +189,19 @@ export interface Session {
   metadata: Record<string, string>;
 }
 
-export function isOrchestratorSession(session: {
-  id: SessionId;
-  metadata?: Record<string, string>;
-}): boolean {
-  return (
-    session.metadata?.["role"] === "orchestrator" || session.id.endsWith("-orchestrator")
-  );
+export function isOrchestratorSession(
+  session: { id: SessionId; metadata?: Record<string, string> },
+  sessionPrefix?: string,
+): boolean {
+  if (session.metadata?.["role"] === "orchestrator" || session.id.endsWith("-orchestrator")) {
+    return true;
+  }
+  if (sessionPrefix) {
+    return new RegExp(
+      `^${sessionPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-orchestrator-\\d+$`,
+    ).test(session.id);
+  }
+  return false;
 }
 
 /** Config for creating a new session */
