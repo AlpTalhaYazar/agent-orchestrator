@@ -13,10 +13,12 @@ export interface GlobalPauseState {
 }
 
 export function resolveGlobalPause(
-  sessions: Array<{ id: string; metadata: Record<string, string> }>,
+  sessions: Array<{ id: string; projectId: string; metadata: Record<string, string> }>,
+  projects: Record<string, { sessionPrefix?: string }>,
 ): GlobalPauseState | null {
   for (const session of sessions) {
-    if (!isOrchestratorSession(session)) continue;
+    const sessionPrefix = projects[session.projectId]?.sessionPrefix ?? session.projectId;
+    if (!isOrchestratorSession(session, sessionPrefix)) continue;
     const parsed = parsePauseUntil(session.metadata[GLOBAL_PAUSE_UNTIL_KEY]);
     if (!parsed || parsed.getTime() <= Date.now()) continue;
 

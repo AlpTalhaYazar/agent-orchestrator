@@ -75,7 +75,13 @@ export async function GET(request: Request) {
 
     const allSessions = requestedProjectId ? await sessionManager.list() : coreSessions;
 
-    let workerSessions = visibleSessions.filter((session) => !isOrchestratorSession(session));
+    let workerSessions = visibleSessions.filter(
+      (session) =>
+        !isOrchestratorSession(
+          session,
+          config.projects[session.projectId]?.sessionPrefix ?? session.projectId,
+        ),
+    );
 
     // Convert to dashboard format
     let dashboardSessions = workerSessions.map(sessionToDashboard);
@@ -134,7 +140,7 @@ export async function GET(request: Request) {
         stats: computeStats(dashboardSessions),
         orchestratorId,
         orchestrators,
-        globalPause: resolveGlobalPause(allSessions),
+        globalPause: resolveGlobalPause(allSessions, config.projects),
       },
       { status: 200 },
       correlationId,

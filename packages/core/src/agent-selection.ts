@@ -21,7 +21,7 @@ export interface ResolvedAgentSelection {
 export function resolveSessionRole(
   sessionId: string,
   metadata: Record<string, string> | undefined,
-  sessionPrefix?: string,
+  sessionPrefix: string,
 ): SessionRole {
   return isOrchestratorSession({ id: sessionId, metadata }, sessionPrefix) ? "orchestrator" : "worker";
 }

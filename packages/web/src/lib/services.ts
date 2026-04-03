@@ -226,7 +226,11 @@ export async function pollBacklog(): Promise<void> {
     await relabelReopenedIssues(config, registry);
 
     const workerSessions = allSessions.filter(
-      (session) => !isOrchestratorSession(session) && !TERMINAL_STATUSES.has(session.status),
+      (session) =>
+        !isOrchestratorSession(
+          session,
+          config.projects[session.projectId]?.sessionPrefix ?? session.projectId,
+        ) && !TERMINAL_STATUSES.has(session.status),
     );
     const activeIssueIds = new Set(
       workerSessions
