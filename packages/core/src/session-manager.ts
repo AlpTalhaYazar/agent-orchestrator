@@ -1316,142 +1316,56 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
     // Get the sessions directory for this project
     const sessionsDir = getProjectSessionsDir(project);
 
-    // When useWorktree is true, reserve a new unique orchestrator identity
-    // (e.g. {prefix}-orchestrator-1, {prefix}-orchestrator-2) and create an isolated worktree.
-    // Otherwise, use the deterministic single-orchestrator session ID.
-    let sessionId: string;
-    let tmuxName: string | undefined;
-
-    if (orchestratorConfig.useWorktree) {
-      const identity = reserveNextOrchestratorIdentity(project, sessionsDir);
-      sessionId = identity.sessionId;
-      tmuxName = identity.tmuxName;
-    } else {
-      sessionId = `${project.sessionPrefix}-orchestrator`;
-
-      // Generate tmux name if using new architecture
-      if (config.configPath) {
-        const hash = generateConfigHash(config.configPath);
-        tmuxName = `${hash}-${sessionId}`;
-      }
-
-      const existingRaw = readMetadataRaw(sessionsDir, sessionId);
-      const existingOrchestrator = existingRaw?.["runtimeHandle"]
-        ? metadataToSession(sessionId, existingRaw, orchestratorConfig.projectId)
-        : null;
-      if (existingOrchestrator?.runtimeHandle) {
-        const existingAlive = await plugins.runtime
-          .isAlive(existingOrchestrator.runtimeHandle)
-          .catch(() => false);
-        if (existingAlive && orchestratorSessionStrategy === "reuse") {
-          const persistedRaw = readMetadataRaw(sessionsDir, sessionId);
-          if (persistedRaw?.["runtimeHandle"]) {
-            const persisted = metadataToSession(
-              sessionId,
-              persistedRaw,
-              orchestratorConfig.projectId,
-            );
-            persisted.metadata["orchestratorSessionReused"] = "true";
-            return persisted;
-          }
-          await plugins.runtime.destroy(existingOrchestrator.runtimeHandle).catch(() => undefined);
-          deleteMetadata(sessionsDir, sessionId, false);
-        }
-        if (existingAlive && orchestratorSessionStrategy !== "reuse") {
-          await plugins.runtime.destroy(existingOrchestrator.runtimeHandle).catch(() => undefined);
-          // Destroy runtime and delete metadata without archive for ignore strategy
-          deleteMetadata(sessionsDir, sessionId, false);
-        }
-        // For dead runtime, delete metadata so reserveSessionId can succeed:
-        // - With reuse strategy + opencode: archive to preserve opencodeSessionId for reuse lookup
-        // - With non-reuse strategy: delete without archive to respawn fresh
-        if (!existingAlive) {
-          deleteMetadata(sessionsDir, sessionId, orchestratorSessionStrategy === "reuse");
-        }
-      }
-
-      // Atomically reserve the session ID before creating any resources.
-      // This prevents race conditions where concurrent spawnOrchestrator calls
-      // both see no existing session and proceed to create duplicate runtimes.
-      let reserved = reserveSessionId(sessionsDir, sessionId);
-      if (!reserved) {
-        // Reservation failed - another process reserved it first.
-        // Check if the session now exists and is alive.
-        const concurrentRaw = readMetadataRaw(sessionsDir, sessionId);
-        const concurrentSession = concurrentRaw?.["runtimeHandle"]
-          ? metadataToSession(sessionId, concurrentRaw, orchestratorConfig.projectId)
-          : null;
-        if (concurrentSession?.runtimeHandle) {
-          const concurrentAlive = await plugins.runtime
-            .isAlive(concurrentSession.runtimeHandle)
-            .catch(() => false);
-          if (concurrentAlive && orchestratorSessionStrategy === "reuse") {
-            concurrentSession.metadata["orchestratorSessionReused"] = "true";
-            return concurrentSession;
-          }
-          if (!concurrentAlive) {
-            deleteMetadata(sessionsDir, sessionId, orchestratorSessionStrategy === "reuse");
-            reserved = reserveSessionId(sessionsDir, sessionId);
-          }
-        } else {
-          reserved = reserveSessionId(sessionsDir, sessionId);
-        }
-        if (!reserved) {
-          throw new Error(`Session ${sessionId} already exists but is not in a reusable state`);
-        }
-      }
-    }
+    // Reserve a new unique orchestrator identity (e.g. {prefix}-orchestrator-1, -2, …).
+    // Each spawnOrchestrator call gets its own numbered session and isolated worktree.
+    const identity = reserveNextOrchestratorIdentity(project, sessionsDir);
+    const sessionId = identity.sessionId;
+    const tmuxName = identity.tmuxName;
 
     // Validate and store .origin file
     if (config.configPath) {
       validateAndStoreOrigin(config.configPath, project.path);
     }
 
-    // Determine workspace path and branch.
-    // Worktree-based orchestrators get an isolated branch; others use the project root.
-    let workspacePath = project.path;
-    const branch = orchestratorConfig.useWorktree
-      ? `orchestrator/${sessionId}`
-      : project.defaultBranch;
+    // Each orchestrator gets an isolated worktree on its own branch.
+    const branch = `orchestrator/${sessionId}`;
 
-    if (orchestratorConfig.useWorktree) {
-      if (!plugins.workspace) {
-        try {
-          deleteMetadata(sessionsDir, sessionId, false);
-        } catch {
-          /* best effort */
-        }
-        throw new Error(
-          `useWorktree requires a workspace plugin but none is configured for project '${orchestratorConfig.projectId}'`,
-        );
-      }
+    if (!plugins.workspace) {
       try {
-        const wsInfo = await plugins.workspace.create({
-          projectId: orchestratorConfig.projectId,
-          project,
-          sessionId,
-          branch,
-        });
-        workspacePath = wsInfo.path;
-      } catch (err) {
-        try {
-          deleteMetadata(sessionsDir, sessionId, false);
-        } catch {
-          /* best effort */
-        }
-        throw err;
+        deleteMetadata(sessionsDir, sessionId, false);
+      } catch {
+        /* best effort */
       }
+      throw new Error(
+        `spawnOrchestrator requires a workspace plugin but none is configured for project '${orchestratorConfig.projectId}'`,
+      );
+    }
+
+    let workspacePath: string;
+    try {
+      const wsInfo = await plugins.workspace.create({
+        projectId: orchestratorConfig.projectId,
+        project,
+        sessionId,
+        branch,
+      });
+      workspacePath = wsInfo.path;
+    } catch (err) {
+      try {
+        deleteMetadata(sessionsDir, sessionId, false);
+      } catch {
+        /* best effort */
+      }
+      throw err;
     }
 
     // Helper: undo worktree + metadata if anything between workspace creation
     // and a fully-written metadata record fails.
     const cleanupWorktreeAndMetadata = async (): Promise<void> => {
-      if (orchestratorConfig.useWorktree && plugins.workspace) {
-        try {
-          await plugins.workspace.destroy(workspacePath);
-        } catch {
-          /* best effort */
-        }
+      try {
+        await plugins.workspace.destroy(workspacePath);
+      } catch {
+        /* best effort */
       }
       try {
         deleteMetadata(sessionsDir, sessionId, false);
@@ -1616,12 +1530,10 @@ export function createSessionManager(deps: SessionManagerDeps): OpenCodeSessionM
         /* best effort */
       }
       // Clean up worktree created for this session
-      if (orchestratorConfig.useWorktree && plugins.workspace) {
-        try {
-          await plugins.workspace.destroy(workspacePath);
-        } catch {
-          /* best effort */
-        }
+      try {
+        await plugins.workspace.destroy(workspacePath);
+      } catch {
+        /* best effort */
       }
       try {
         deleteMetadata(sessionsDir, sessionId, false);

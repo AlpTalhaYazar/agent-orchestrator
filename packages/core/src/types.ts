@@ -218,16 +218,6 @@ export interface SessionSpawnConfig {
 export interface OrchestratorSpawnConfig {
   projectId: string;
   systemPrompt?: string;
-  /**
-   * When true, creates an isolated git worktree for this orchestrator session,
-   * enabling multiple orchestrators to operate on the same project concurrently.
-   * Each orchestrator gets a unique session ID (e.g. {prefix}-orch-1) and its
-   * own branch (orchestrator/{sessionId}).
-   *
-   * When false (default), the orchestrator uses the project root directly with
-   * the deterministic session ID {prefix}-orchestrator.
-   */
-  useWorktree?: boolean;
 }
 
 // =============================================================================
